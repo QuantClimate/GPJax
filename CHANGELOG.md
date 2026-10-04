@@ -22,12 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   predictive mean and variance as an `xr.Dataset`, with at most `chunk_size`
   cells in memory at once and one compilation. A Dask-backed grid gives a lazy
   result that is predicted block by block.
-- **The *Gridded Data with xarray* example now uses real data.** It reads a
-  netCDF file of the 2024 temperature anomaly from the NCEP-NCAR Reanalysis 1,
-  which is complete, and removes cells to test the infill against the truth.
-  Cells removed at random are filled well, and joint samples give a global mean
-  whose interval holds the truth. Cells removed because they are warm show how a
-  GP is biased, and overconfident, when data are missing not at random.
+- **New example: *Infilling Global Surface Temperature*.** It reads a netCDF
+  file of the 2024 temperature anomaly from the NCEP-NCAR Reanalysis 1, which is
+  complete, and removes cells to test the infill against the truth. Cells removed
+  at random are filled well, and joint samples give a global mean whose interval
+  holds the truth. Cells removed because they are warm show how a GP is biased,
+  and overconfident, when data are missing not at random.
+- **The xarray introduction is now *Working with Gridded Data*, under Getting
+  started.** It uses `Standardise` and `GridSpec.predict`, and shows
+  `UnitSphere` and `Cyclic`. Its URL is unchanged.
 
 ### Changed
 

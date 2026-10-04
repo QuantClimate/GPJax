@@ -15,34 +15,31 @@
 # ---
 
 # %% [markdown]
-# %% [markdown]
-# # Gridded Data with xarray
+# # Working with Gridded Data
 #
 # Download this notebook: {nb-download}`xarray_workflow.ipynb`
 #
-# Climate data usually arrive as labelled [xarray](https://docs.xarray.dev/)
-# objects, read from netCDF files: a temperature field over latitude and
-# longitude, often with gaps where there were no observations. A GP in GPJax, on
-# the other hand, consumes a [`Dataset`](#gpjax.dataset.Dataset) of flat inputs
-# $\mathbf{X} \in \mathbb{R}^{N \times D}$ and outputs $\mathbf{y} \in
-# \mathbb{R}^{N \times 1}$. The [`gpjax.xarray`](../reference/xarray.md) module
-# converts between the two at the edges of a workflow.
+# Climate and environmental data rarely arrive as a tidy matrix. They arrive as
+# labelled [xarray](https://docs.xarray.dev/) objects: a temperature field over
+# latitude and longitude, a covariate such as elevation, and gaps where a sensor
+# failed or a cloud covered the scene. A GP in GPJax, on the other hand, consumes a
+# [`Dataset`](#gpjax.dataset.Dataset) of flat inputs $\mathbf{X} \in \mathbb{R}^{N
+# \times D}$ and outputs $\mathbf{y} \in \mathbb{R}^{N \times 1}$.
 #
-# In this notebook we fill gaps in a global temperature field. To know how good
-# the filled values are, we start from a field that is complete, remove cells
-# ourselves, and compare the GP with the cells that we removed. We
+# The [`gpjax.xarray`](../reference/xarray.md) module converts between the two at the
+# edges of a workflow. In this notebook we
 #
-# 1. flatten a gappy, labelled global field into a `Dataset` with
-#    [`from_xarray`](#gpjax.xarray.from_xarray), and put the inputs on the sphere
-#    with the [`UnitSphere`](#gpjax.xarray.UnitSphere) transform,
+# 1. flatten a gappy, labelled field into a `Dataset` with
+#    [`from_xarray`](#gpjax.xarray.from_xarray),
 # 2. fit a GP exactly as we would on any other `Dataset`,
 # 3. predict the mean and variance on a finer grid with
-#    [`GridSpec.predict`](#gpjax.xarray.GridSpec.predict), which works in chunks,
-# 4. draw joint posterior samples with
+#    [`GridSpec.predict`](#gpjax.xarray.GridSpec.predict), and
+# 4. draw joint posterior samples on that grid with
 #    [`GridSpec.inputs_for`](#gpjax.xarray.GridSpec.inputs_for) and
-#    [`GridSpec.to_xarray`](#gpjax.xarray.GridSpec.to_xarray), to get the global
-#    mean temperature with its uncertainty, and
-# 5. show what goes wrong when cells are missing *because of* their values.
+#    [`GridSpec.to_xarray`](#gpjax.xarray.GridSpec.to_xarray).
+#
+# For the same workflow on real data, see
+# [Infilling Global Surface Temperature](infilling_surface_temperature.py).
 #
 # The module needs the optional extra: `pip install "gpjax[xarray]"`.
 
@@ -54,8 +51,6 @@ import logging
 logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 
 # %%
-from pathlib import Path
-
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
@@ -68,98 +63,95 @@ config.update("jax_enable_x64", True)
 
 with install_import_hook("gpjax", "beartype.beartype"):
     import gpjax as gpx
-    from gpjax.parameters import val
     from gpjax.xarray import (
-        UnitSphere,
+        Standardise,
         from_xarray,
     )
 
 key = jr.key(42)
-rng = np.random.default_rng(0)
 gpx.plotting.use_style()
 
 # %% [markdown]
-# ## A complete temperature field
+# ## A synthetic temperature field
 #
-# We use the [NCEP-NCAR Reanalysis 1](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.html)
-# (Kalnay et al., 1996). A reanalysis combines a weather model with the
-# observations, so it has a value in every grid cell. The file holds the 2024
-# annual-mean near-surface air temperature as an *anomaly*: the difference from
-# the 1991–2020 mean of the same cell. Anomalies remove the large, fixed
-# differences between the equator and the poles, so what remains is the
-# signal of interest, and it varies smoothly over large distances.
-#
-# NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA,
-# from their website at <https://psl.noaa.gov>.
+# We simulate near-surface temperature on a regional latitude-longitude grid. It
+# cools towards the pole and with elevation (a lapse rate of roughly 6.5 K per
+# kilometre), with a smooth large-scale anomaly on top. Elevation is a separate
+# variable over the same grid. The data are synthetic, so the notebook needs no
+# download and every number in it can be checked against the truth.
+
 
 # %%
-nc_candidates = [
-    Path("docs/examples/data/ncep_air_anomaly_2024.nc"),
-    Path("data/ncep_air_anomaly_2024.nc"),
-]
-nc_path = next(path for path in nc_candidates if path.exists())
-reanalysis = xr.open_dataset(nc_path)
-reanalysis
+def elevation_at(lat, lon):
+    """A single mountain range, in metres."""
+    return 2500.0 * np.exp(-(((lon - 12.0) / 4.0) ** 2) - ((lat - 47.0) / 3.0) ** 2)
+
+
+def temperature_at(lat, lon, elevation):
+    """Temperature in kelvin: latitude gradient, lapse rate and an anomaly."""
+    anomaly = 1.5 * np.sin(lon / 3.0) * np.cos(lat / 4.0)
+    return 290.0 - 0.6 * (lat - 40.0) - 0.0065 * elevation + anomaly
+
+
+def regional_field(lats, lons) -> xr.Dataset:
+    lat_grid, lon_grid = np.meshgrid(lats, lons, indexing="ij")
+    elevation = elevation_at(lat_grid, lon_grid)
+    return xr.Dataset(
+        {
+            "t2m": (
+                ("lat", "lon"),
+                temperature_at(lat_grid, lon_grid, elevation),
+                {"units": "K", "long_name": "2 m air temperature"},
+            ),
+            "elevation": (("lat", "lon"), elevation, {"units": "m"}),
+        },
+        coords={
+            "lat": ("lat", lats, {"units": "degrees_north"}),
+            "lon": ("lon", lons, {"units": "degrees_east"}),
+        },
+    )
+
+
+coarse = regional_field(np.linspace(40.0, 54.0, 12), np.linspace(2.0, 22.0, 16))
 
 # %% [markdown]
-# The native grid is 2.5°. We fit on a 5° grid, which is every second grid point,
-# and predict back on the 2.5° grid, so the predictions are also tested at points
-# the model never saw.
+# Real observations have holes. We knock out a block of cells, as a cloud would,
+# and add a little measurement noise to the rest.
 
 # %%
-truth_fine = reanalysis["tas_anomaly"].astype(float)
-truth = truth_fine.isel(lat=slice(1, None, 2), lon=slice(1, None, 2))
-print(f"5° grid: {dict(truth.sizes)}, 2.5° grid: {dict(truth_fine.sizes)}")
+key, noise_key = jr.split(key)
+noise = 0.2 * np.asarray(jr.normal(noise_key, coarse["t2m"].shape))
+observed = coarse.copy(deep=True)
+observed["t2m"] = observed["t2m"] + noise
+observed["t2m"].attrs = coarse["t2m"].attrs
+observed["t2m"][4:7, 9:13] = np.nan
 
-anomaly_style = dict(cmap="RdBu_r", vmin=-4.0, vmax=4.0)
-error_style = dict(
-    cmap="PuOr_r", vmin=-2.0, vmax=2.0, cbar_kwargs={"label": "Error [K]"}
-)
-truth_fine.plot(figsize=(7, 3.5), **anomaly_style)
-plt.title("2024 anomaly, NCEP-NCAR Reanalysis 1")
+observed["t2m"].plot(cmap="coolwarm")
+plt.title("Observed temperature (gaps in white)")
 plt.show()
 
 # %% [markdown]
-# A 5° cell near a pole is much smaller than one at the equator, so a global mean
-# weights each cell by the cosine of its latitude.
-
-
-# %%
-def global_mean(field: xr.DataArray) -> xr.DataArray:
-    """Area-weighted mean over the cells that have a value."""
-    weights = np.cos(np.deg2rad(field["lat"]))
-    return field.weighted(weights).mean(["lat", "lon"])
-
-
-print(f"True global mean anomaly: {float(global_mean(truth)):.2f} K")
-
-# %% [markdown]
-# ## Cells missing at random
+# ## From labelled data to a `Dataset`
 #
-# First we keep a random 25% of the 5° cells. Which cells are missing has nothing
-# to do with their values. Statisticians call this *missing completely at
-# random*.
-
-# %%
-kept_at_random = rng.uniform(size=truth.shape) < 0.25
-observed = truth.where(kept_at_random).rename("tas").to_dataset()
-print(f"{int(kept_at_random.sum())} of {truth.size} cells kept")
-
-# %% [markdown]
-# ### Inputs on the sphere
+# `from_xarray` takes the target variable and the inputs we want the GP to depend
+# on. Inputs can be coordinates (`lat`, `lon`) or other data variables
+# (`elevation`), and the columns of $\mathbf{X}$ follow the order we list them in.
+# Cells where the target or any input is NaN are dropped by default, and the
+# returned `GridSpec` records which ones.
 #
-# Latitude and longitude in degrees are not good GP inputs for a global field. A
-# 5° cell is about 555 km wide at the equator but only about 24 km wide next to a
-# pole, and longitude 177.5°E is next to 177.5°W. The
-# [`UnitSphere`](#gpjax.xarray.UnitSphere) transform replaces `lat` and `lon` with
-# the three coordinates of a point on the unit sphere. A stationary kernel on these
-# coordinates uses the chord distance through the Earth, so it has no seam at the
-# antimeridian and no distortion at the poles. Its lengthscale is in Earth radii.
+# Temperature varies over degrees of latitude and longitude, but over hundreds of
+# metres of elevation. The [`Standardise`](#gpjax.xarray.Standardise) transform
+# scales each input to zero mean and unit standard deviation over the training
+# cells, so one starting lengthscale suits every input. The spec keeps the
+# training mean and standard deviation, and applies them to every grid that we
+# predict on.
 
 # %%
+inputs = ["lat", "lon", "elevation"]
 data, spec = from_xarray(
-    observed, target="tas", inputs=["lat", "lon"], transforms=[UnitSphere()]
+    observed, target="t2m", inputs=inputs, transforms=[Standardise()]
 )
+
 print(data)
 print(spec)
 
@@ -168,240 +160,158 @@ print(spec)
 # The `GridSpec` stays with us, outside the model, until we want labelled output
 # again.
 #
-# ### Fitting the model
+# ## Fitting the model
 #
-# We use a Matérn-3/2 kernel, which gives rougher fields than an RBF kernel, as
-# temperature anomalies are. A constant mean absorbs the global warming signal.
-
+# We give the RBF kernel one lengthscale per input, in units of that input's
+# standard deviation. A constant mean absorbs the ~285 K offset.
 
 # %%
-def fit_model(train_data: gpx.Dataset):
-    prior = gpx.gps.Prior(
-        mean_function=gpx.mean_functions.Constant(jnp.array([0.5])),
-        kernel=gpx.kernels.Matern32(lengthscale=jnp.array(0.3), variance=1.0),
-    )
-    model = prior * gpx.likelihoods.Gaussian(obs_stddev=jnp.array(0.1))
-    model, _ = gpx.fit_scipy(
-        model=model,
-        objective=lambda candidate, train_data: (
-            -gpx.objectives.conjugate_mll(candidate, train_data)
-        ),
-        train_data=train_data,
-        verbose=False,
-    )
-    return model
+prior = gpx.gps.Prior(
+    mean_function=gpx.mean_functions.Constant(jnp.array([285.0])),
+    kernel=gpx.kernels.RBF(lengthscale=jnp.ones(3), variance=25.0),
+)
+model = prior * gpx.likelihoods.Gaussian(obs_stddev=jnp.array(0.5))
 
-
-earth_radius_km = 6371.0
-model = fit_model(data)
-lengthscale_km = float(val(model.prior.kernel.lengthscale)) * earth_radius_km
-print(f"Lengthscale: {lengthscale_km:.0f} km")
+model, history = gpx.fit_scipy(
+    model=model,
+    objective=lambda candidate, train_data: -gpx.objectives.conjugate_mll(
+        candidate, train_data
+    ),
+    train_data=data,
+    verbose=False,
+)
 
 # %% [markdown]
-# ### Predicting on the finer grid
+# ## Predicting on a finer grid
 #
 # `spec.predict` gives the predictive mean and variance on any grid that holds the
-# same inputs, encoded exactly as in training. Here the grid is the 2.5° grid of
-# the reanalysis. The function we pass maps a block of inputs to a distribution;
-# we use a diagonal covariance, because we need only the variance of each cell.
+# same input variables, encoded exactly as in training. Here we predict on a grid
+# four times finer in each direction, including the cells that were missing from
+# the observations. The function we pass maps a block of inputs to a
+# distribution. We use the likelihood's predictive distribution, so the variance
+# includes observation noise, and a diagonal covariance, because we need only the
+# variance of each cell.
 #
 # `spec.predict` sends the cells to this function in chunks of `chunk_size`, so
-# the memory use stays the same for a finer or larger grid. If the grid holds
-# Dask arrays, the result is lazy, and each Dask block is predicted only when it is
+# the memory use stays the same for a global grid. If the grid holds Dask
+# arrays, the result is lazy, and each Dask block is predicted only when it is
 # computed or written with `to_netcdf`.
 
 # %%
+fine = regional_field(np.linspace(40.0, 54.0, 45), np.linspace(2.0, 22.0, 61))
 posterior = model.condition(data)
+
 prediction = spec.predict(
     lambda x: model.likelihood(posterior(x, covariance="diagonal")),
-    truth_fine.to_dataset(),
-    chunk_size=2048,
+    fine[["elevation"]],
+    chunk_size=1024,
 )
 prediction
 
 # %% [markdown]
-# Because the field is complete, we can score every prediction. We compare with a
-# simple baseline, the mean of the kept cells, and check the uncertainty: about
-# 95% of the true values should be within two predictive standard deviations.
-
+# The result is a labelled `xr.Dataset` on the fine grid, with the target's
+# attributes carried over. The variance is in $\mathrm{K}^2$. Everything xarray
+# offers, from plotting to `to_netcdf`, works on it directly.
 
 # %%
-def score(prediction: xr.Dataset, observed: xr.Dataset) -> None:
-    error = prediction["tas_mean"] - truth_fine
-    baseline_error = float(observed["tas"].mean()) - truth_fine
-    within = abs(error) < 2 * np.sqrt(prediction["tas_variance"])
-    print(f"RMSE, GP:                {float(np.sqrt((error**2).mean())):.2f} K")
-    print(
-        f"RMSE, mean of kept cells: {float(np.sqrt((baseline_error**2).mean())):.2f} K"
+fig, (mean_ax, std_ax, error_ax) = plt.subplots(1, 3, figsize=(15, 4))
+prediction["t2m_mean"].plot(ax=mean_ax, cmap="coolwarm")
+mean_ax.set_title("Predictive mean")
+np.sqrt(prediction["t2m_variance"]).plot(ax=std_ax, cmap="viridis")
+std_ax.set_title("Predictive standard deviation")
+(prediction["t2m_mean"] - fine["t2m"]).plot(ax=error_ax, cmap="RdBu_r", center=0.0)
+error_ax.set_title("Error against the true field")
+for ax in (mean_ax, std_ax, error_ax):
+    ax.add_patch(
+        plt.Rectangle(
+            (observed.lon[9], observed.lat[4]),
+            float(observed.lon[12] - observed.lon[9]),
+            float(observed.lat[6] - observed.lat[4]),
+            fill=False,
+            linestyle="--",
+        )
     )
-    print(f"Within 2 sd:             {float(within.mean()):.0%}")
-
-
-def plot_infill(prediction: xr.Dataset, observed: xr.Dataset) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(15, 3.5), sharey=True)
-    observed["tas"].plot(ax=axes[0], **anomaly_style)
-    axes[0].set_title("Kept cells")
-    prediction["tas_mean"].plot(ax=axes[1], **anomaly_style)
-    axes[1].set_title("Predictive mean")
-    (prediction["tas_mean"] - truth_fine).plot(ax=axes[2], **error_style)
-    axes[2].set_title("Predictive mean minus truth")
-    for ax in axes[1:]:
-        ax.set_ylabel("")
-    plt.show()
-
-
-score(prediction, observed)
-plot_infill(prediction, observed)
+plt.show()
 
 # %% [markdown]
-# From a quarter of the cells, the GP recovers the large-scale pattern, including
-# the strong warmth over the Arctic. The errors are largest where the field
-# changes over short distances, and the uncertainty is about right.
+# The standard deviation grows inside the dashed box where observations were
+# missing, and the error stays small across the mountain range because elevation is
+# an input.
 #
-# ### The global mean, with joint samples
+# ## Joint samples and regional averages
 #
-# The global mean anomaly fills each missing cell and averages. Its variance
-# depends on the covariance between the filled cells,
+# The mean and variance describe each cell on its own. Many questions are about
+# several cells together, such as the average temperature over the Alpine box
+# $\mathcal{R}$. Its variance depends on the covariance between the cells,
 #
 # $$
-# \operatorname{Var}\Big[\sum_{i} w_i f_i\Big]
-# = \sum_{i, j} w_i w_j \operatorname{Cov}[f_i, f_j],
-# $$ (eq-xarray-global-variance)
+# \operatorname{Var}\Big[\tfrac{1}{|\mathcal{R}|} \sum_{i \in \mathcal{R}} f_i\Big]
+# = \tfrac{1}{|\mathcal{R}|^2} \sum_{i, j \in \mathcal{R}} \operatorname{Cov}[f_i, f_j],
+# $$ (eq-xarray-regional-variance)
 #
 # which the per-cell variances alone cannot give. For this we need the full
-# covariance, so we build all the prediction inputs on the 5° grid at once with
+# covariance, so we build all the prediction inputs at once with
 # `spec.inputs_for`. Passing `num_samples` to `to_xarray` then draws from the joint
-# distribution of the field, and returns the draws with a leading `sample`
-# dimension. `combine_first` keeps the kept cells and takes each missing cell from
-# a draw.
-
+# predictive distribution, and returns the draws with a leading `sample`
+# dimension. Averaging each draw over the region gives samples of the regional
+# mean.
 
 # %%
-def global_mean_samples(posterior, spec, observed: xr.Dataset, key) -> xr.DataArray:
-    test_inputs, test_spec = spec.inputs_for(truth.to_dataset())
-    samples = test_spec.to_xarray(posterior(test_inputs), num_samples=500, key=key)
-    return global_mean(observed["tas"].combine_first(samples["tas"]))
-
-
-def report_global_mean(means: xr.DataArray, observed: xr.Dataset) -> None:
-    print(f"Truth:               {float(global_mean(truth)):.2f} K")
-    print(f"Mean of kept cells:  {float(global_mean(observed['tas'])):.2f} K")
-    print(
-        f"Gaps filled by GP:   {float(means.mean()):.2f}"
-        f" ± {2 * float(means.std('sample')):.2f} K (2 sd)"
-    )
-
-
+test_inputs, test_spec = spec.inputs_for(fine[["elevation"]])
+latent = posterior(test_inputs)  # the field itself, without observation noise
 key, sample_key = jr.split(key)
-means = global_mean_samples(posterior, spec, observed, sample_key)
-report_global_mean(means, observed)
+samples = test_spec.to_xarray(latent, num_samples=500, key=sample_key)
+
+alps = dict(lat=slice(45.0, 49.0), lon=slice(8.0, 16.0))
+regional_mean = samples["t2m"].sel(**alps).mean(["lat", "lon"])
+true_regional_mean = float(fine["t2m"].sel(**alps).mean())
+
+# The same latent distribution, but treating the cells as independent.
+latent_variance = test_spec.to_xarray(latent)["t2m_variance"].sel(**alps)
+joint_std = float(regional_mean.std("sample"))
+naive_std = float(np.sqrt(latent_variance.sum()) / latent_variance.size)
+
+print(f"Regional mean: {float(regional_mean.mean()):.2f} K (truth {true_regional_mean:.2f} K)")
+print(f"Standard deviation from joint samples:        {joint_std:.3f} K")
+print(f"Standard deviation if cells were independent: {naive_std:.3f} K")
 
 # %% [markdown]
-# With random gaps, even the mean of the kept cells is close to the truth, and the
-# GP gives the global mean with an interval that holds it.
+# Treating the cells as independent understates the uncertainty in the regional
+# average by roughly an order of magnitude, because neighbouring cells tend to be
+# wrong in the same direction. Against the joint standard deviation the true
+# regional mean is a plausible outcome; against the independent one it would look
+# like a many-sigma surprise. Joint
+# samples keep that correlation, which is why `to_xarray` refuses to draw samples
+# from a distribution that only holds marginal variances (as returned by
+# `posterior(test_inputs, covariance="diagonal")`).
 #
-# ## Cells missing because of their values
+# ## Global grids and seasonal cycles
 #
-# Real gaps are rarely random. A satellite cannot see the surface through cloud,
-# a station fails in extreme weather, and the polar regions, which warm fastest,
-# have the fewest observations. When the chance that a cell is missing depends on
-# the value that is missing, the data are *missing not at random*.
-#
-# We simulate this. We again aim to keep a quarter of the cells, but now the
-# warmer a cell's anomaly, the less likely it is to be kept.
-
-# %%
-standardised = ((truth - truth.mean()) / truth.std()).values
-odds = np.exp(-1.5 * standardised)
-keep_probability = np.clip(0.25 * odds / odds.mean(), 0.0, 1.0)
-kept_selectively = rng.uniform(size=truth.shape) < keep_probability
-selective = truth.where(kept_selectively).rename("tas").to_dataset()
-print(f"{int(kept_selectively.sum())} of {truth.size} cells kept")
-
-# %% [markdown]
-# The steps are the same as before.
-
-# %%
-data_selective, spec_selective = from_xarray(
-    selective, target="tas", inputs=["lat", "lon"], transforms=[UnitSphere()]
-)
-model_selective = fit_model(data_selective)
-posterior_selective = model_selective.condition(data_selective)
-prediction_selective = spec_selective.predict(
-    lambda x: model_selective.likelihood(posterior_selective(x, covariance="diagonal")),
-    truth_fine.to_dataset(),
-    chunk_size=2048,
-)
-
-score(prediction_selective, selective)
-plot_infill(prediction_selective, selective)
-
-key, sample_key = jr.split(key)
-means_selective = global_mean_samples(
-    posterior_selective, spec_selective, selective, sample_key
-)
-report_global_mean(means_selective, selective)
-
-# %% [markdown]
-# The kept cells are mostly the cold ones, so their mean is far too cold. The GP
-# removes part of this bias, because it fills each gap from its neighbours and
-# the warm regions still have some kept cells. But the result is still too cold,
-# and the interval does not hold the truth: the GP is confidently wrong.
-#
-# The reason is that a GP conditions only on the values it sees. Its prior has one
-# constant mean, which it learns from the kept cells, so the cold kept cells pull
-# that mean down. It also has no way to know that the missing cells are warm,
-# because nothing in its inputs says so. Its uncertainty describes the spread of
-# values that are *consistent with the kept cells*, not the error of the
-# selection.
-#
-# In real data we cannot see this bias, because we do not have the missing values.
-# Useful steps are:
-#
-# - Add inputs that explain why cells are missing, such as cloud fraction or a
-#   covariate that is observed everywhere. If the chance of a gap depends only on
-#   the inputs, the gaps are *missing at random* given those inputs, and the GP
-#   can correct for them.
-# - Model the observation process together with the field.
-# - Test how sensitive the result is to different assumptions about the missing
-#   values, as we did here with a complete field.
-#
-# ## Other inputs and seasonal cycles
-#
-# The same workflow takes more inputs. Other transforms encode them:
-# [`Cyclic`](#gpjax.xarray.Cyclic) encodes a periodic input as a point on a
-# circle, and [`Standardise`](#gpjax.xarray.Standardise) scales an input to zero
-# mean and unit standard deviation over the training cells. Datetime inputs are
-# days since their first timestamp, so a period of 365.25 gives the seasonal
-# cycle of a monthly record:
+# Latitude and longitude in degrees are not good inputs for a global field. A
+# degree of longitude is about 111 km at the equator but only 38 km at 70°N, and
+# longitude 359° is next to 0°. The
+# [`UnitSphere`](#gpjax.xarray.UnitSphere) transform replaces `lat` and `lon` with
+# the three coordinates of a point on the unit sphere. A stationary kernel on these
+# coordinates uses the chord distance through the Earth, which has no seam and no
+# distortion at the poles. In the same way, [`Cyclic`](#gpjax.xarray.Cyclic)
+# encodes a periodic input as a point on a circle. Datetime inputs are days since
+# their first timestamp, so a period of 365.25 gives the seasonal cycle:
 #
 # ```python
 # data, spec = from_xarray(
-#     monthly,
-#     target="tas",
-#     inputs=["lat", "lon", "time", "cloud_fraction"],
-#     transforms=[
-#         UnitSphere(),
-#         Cyclic("time", 365.25),
-#         Standardise(["cloud_fraction"]),
-#     ],
+#     ds,
+#     target="t2m",
+#     inputs=["lat", "lon", "time", "elevation"],
+#     transforms=[UnitSphere(), Cyclic("time", 365.25), Standardise(["elevation"])],
 # )
 # spec.columns
-# # ('sphere_x', 'sphere_y', 'sphere_z', 'time_sin', 'time_cos', 'cloud_fraction')
+# # ('sphere_x', 'sphere_y', 'sphere_z', 'time_sin', 'time_cos', 'elevation')
 # ```
 #
 # The transforms run in order, and `spec.columns` names the columns of
-# $\mathbf{X}$ that they produce. The spec applies the same fitted transforms to
-# every grid that we predict on.
-#
-# ## References
-#
-# Kalnay, E., Kanamitsu, M., Kistler, R., Collins, W., Deaven, D., Gandin, L.,
-# Iredell, M., Saha, S., White, G., Woollen, J., Zhu, Y., Chelliah, M., Ebisuzaki,
-# W., Higgins, W., Janowiak, J., Mo, K. C., Ropelewski, C., Wang, J., Leetmaa, A.,
-# Reynolds, R., Jenne, R. and Joseph, D. (1996). The NCEP/NCAR 40-year reanalysis
-# project. *Bulletin of the American Meteorological Society*, 77(3), 437–471.
-# [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2)
+# $\mathbf{X}$ that they produce, one for each kernel lengthscale.
+# [Infilling Global Surface Temperature](infilling_surface_temperature.py) uses
+# `UnitSphere` on a real global field.
 #
 # ## System configuration
 
