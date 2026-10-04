@@ -317,21 +317,11 @@ html_favicon = "static/favicon.ico"
 # GitHub Pages used to send.
 html_extra_path = ["_redirects", "_headers"]
 html_theme_options = {
-    # `accent_color` only accepts a radix ramp *name*. shibuya writes the value
-    # verbatim into `<html data-accent-color="...">` and its stylesheet carries
-    # one `[data-accent-color=<name>]` block per radix ramp, each mapping
-    # `--accent-1..12` onto that ramp. A hex value matches no block, so the whole
-    # accent ramp goes undefined -- confirmed in a browser: with
-    # `data-accent-color="#7a2e2a"` both `--accent-9` and the `--sy-c-link` it
-    # feeds compute to the empty string, the active sidebar entry drops back to
-    # body-text grey and code blocks lose their tint entirely.
-    #
-    # So the named ramp stays, and supplies the derived tints (code-block and
-    # admonition surfaces, hover states). `red` replaces the previous `crimson`
-    # because the brand is now #7a2e2a, a true red at hue 3 degrees; crimson is a
-    # pink-red at hue 348 and its tints read pink against it. The exact brand hex
-    # is pinned over `--accent-9` in stylesheets/extra.css.
-    "accent_color": "red",
+    # `accent_color` only accepts a radix ramp *name*: a hex value matches none of
+    # shibuya's `[data-accent-color=<name>]` blocks and leaves `--accent-*`
+    # undefined. As in impulso, it names the token family, and
+    # stylesheets/extra.css re-tones the crimson scale to ledger oxblood.
+    "accent_color": "crimson",
     "color_mode": "auto",  # follow the reader's light/dark preference
     "github_url": "https://github.com/QuantClimate/GPJax",
     "nav_links": [
