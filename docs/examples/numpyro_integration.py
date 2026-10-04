@@ -26,13 +26,19 @@
 # capturing the residuals. We will infer the parameters of both the linear model and the GP jointly.
 
 # %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
+# %% tags=["remove-cell"]
 import os
 
 # Smoke-render flag: set GPJAX_DOCS_CI=1 to shrink MCMC for fast CI builds.
 ci = os.environ.get("GPJAX_DOCS_CI") == "1"
 
 # %%
-from utils import use_mpl_style
 import gpjax as gpx
 from jax import config
 import jax.numpy as jnp
@@ -49,7 +55,7 @@ from numpyro.infer import (
 
 config.update("jax_enable_x64", True)
 
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 key = jr.key(123)

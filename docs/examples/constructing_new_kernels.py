@@ -24,9 +24,15 @@
 # to a GP prior; if not, our [introduction to kernels](intro_to_kernels.py) builds that
 # intuition first.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 # Enable Float64 for more stable matrix inversions.
-from utils import use_mpl_style
 from gpjax.kernels.base import val
 from gpjax.kernels.computations import DenseKernelComputation
 from gpjax.parameters import PositiveReal
@@ -49,7 +55,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 key = jr.key(42)
 

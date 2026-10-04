@@ -43,10 +43,16 @@
 # correlated North Atlantic wave-height outputs, optimises the model's parameters
 # via the OILMM log marginal likelihood, and visualises its predictions.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 from pathlib import Path
 
-from utils import use_mpl_style
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
@@ -61,7 +67,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
     import gpjax as gpx
 
 key = jr.key(123)
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 # %% [markdown]

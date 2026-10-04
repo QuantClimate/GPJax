@@ -72,6 +72,13 @@
 # these methods in the forthcoming sections, but first, we will show how to instantiate
 # a likelihood object. To do this, we'll need a dataset.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %% mystnb={"figure": {"caption": "Fifty noisy observations of a sinusoid, shown alongside the latent function that generated them.", "name": "fig-likelihoods-guide-data"}}
 import jax
 
@@ -81,14 +88,13 @@ import jax.numpy as jnp
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from utils import use_mpl_style
 import gpjax as gpx
 
 config.update("jax_enable_x64", True)
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 key = jr.key(42)

@@ -31,6 +31,13 @@
 # [dual sparse GP notebook](dual_svgp.py) applies the same ideas to site
 # parameters.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 # Enable Float64 for more stable matrix inversions.
 import time
@@ -45,7 +52,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import optax as ox
 import paramax
-from utils import clean_legend, use_mpl_style
+from utils import clean_legend
 
 config.update("jax_enable_x64", True)
 
@@ -65,7 +72,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 key = jr.key(123)
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 
