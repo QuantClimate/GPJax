@@ -83,7 +83,7 @@ exclude_patterns = [
     "examples/_*.py",
     "examples/**/_*.py",
     # GPJax's notebook helper predates that naming convention and is imported by
-    # name (`from utils import use_mpl_style`), so it cannot simply be renamed.
+    # name (`from utils import clean_legend`), so it cannot simply be renamed.
     "examples/utils.py",
     # Image/style assets, plus one stray legacy module (static/jaxkern/main.py)
     # that source_suffix would otherwise read as a notebook.

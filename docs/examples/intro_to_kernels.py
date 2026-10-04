@@ -21,11 +21,17 @@
 #
 # In this guide we provide an introduction to kernels, and the role they play in Gaussian process models.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 # Enable Float64 for more stable matrix inversions.
 from pathlib import Path
 
-from utils import use_mpl_style
 from gpjax.typing import Array
 from jax import config
 import jax.numpy as jnp
@@ -50,7 +56,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 key = jr.key(42)
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 # %% [markdown]

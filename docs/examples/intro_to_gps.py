@@ -120,6 +120,13 @@
 #
 # We can plot three different parameterisations of this density.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import warnings
 
@@ -131,13 +138,11 @@ import numpyro.distributions as npd
 import pandas as pd
 import seaborn as sns
 
-from utils import (
-    confidence_ellipse,
-    use_mpl_style,
-)
+from gpjax import plotting
+from utils import confidence_ellipse
 
 # set the default style for plotting
-use_mpl_style()
+plotting.use_style()
 
 key = jr.key(42)
 

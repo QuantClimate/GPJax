@@ -33,10 +33,16 @@
 # surface drifter trajectories from the Gulf of Mexico spanning 28 years.
 #
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 from pathlib import Path
 
-from utils import use_mpl_style
 from gpjax.kernels.computations import DenseKernelComputation
 from jax import (
     config,
@@ -67,7 +73,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 key = jr.key(42)
 

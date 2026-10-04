@@ -38,6 +38,13 @@
 # 5. confirm empirically that inference scales linearly in $N$.
 
 # %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
+# %% tags=["remove-cell"]
 import os
 
 # Smoke-render flag: set GPJAX_DOCS_CI=1 to shrink the scaling sweep for fast CI builds.
@@ -47,7 +54,7 @@ ci = os.environ.get("GPJAX_DOCS_CI") == "1"
 # Enable Float64 for more stable matrix factorisations.
 from pathlib import Path
 
-from utils import clean_legend, use_mpl_style
+from utils import clean_legend
 import jax
 from jax import config
 import jax.numpy as jnp
@@ -72,7 +79,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 key = jr.key(123)
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 # %% [markdown]

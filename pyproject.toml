@@ -72,6 +72,7 @@ docs = [
   "playwright>=1.49",
   # -- Example notebook dependencies (unchanged) --
   "matplotlib>=3.7.1",
+  "qc-core>=0.0.3",           # QuantClimate "Calibrated Ledger" plot style
   "seaborn>=0.12.2",
   "networkx>=3.0",
   "ipython>=8.11.0",
@@ -91,6 +92,10 @@ xarray = [
 
 [tool.uv]
 exclude-newer = "7 days"
+# qc-core is QuantClimate's own package, published by PyPI trusted publishing
+# from QuantClimate/core, so it skips the cooldown. A new qc-core release can
+# then reach the docs on the day it ships.
+exclude-newer-package = { qc-core = false }
 managed = true
 
 # PEP 735 dependency group. Must stay here rather than under `[tool.uv]`:

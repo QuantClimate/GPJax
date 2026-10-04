@@ -25,9 +25,15 @@
 # contained in this notebook can be adapted to applied problems concerning datasets
 # other than the one presented here.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 # Enable Float64 for more stable matrix inversions.
-from utils import use_mpl_style
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
@@ -56,7 +62,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 key = jr.key(42)
