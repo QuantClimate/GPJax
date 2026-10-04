@@ -26,9 +26,15 @@
 # {cite:t}`wilson2016deep`, transforming the inputs to our
 # Gaussian process model's kernel through a neural network can offer a solution to this.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import equinox as eqx
-from utils import use_mpl_style
 from gpjax.kernels.computations import (
     AbstractKernelComputation,
     DenseKernelComputation,
@@ -58,7 +64,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 key = jr.key(42)

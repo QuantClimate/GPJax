@@ -30,10 +30,16 @@
 # significantly more favourable uncertainty estimation.
 #
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import typing as tp
 
-from utils import use_mpl_style
 import jax
 
 # Enable Float64 for more stable matrix inversions.
@@ -60,7 +66,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 key = jr.key(123)
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 cols = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
