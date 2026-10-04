@@ -177,8 +177,10 @@ examples/barycentres
 examples/graph_kernels
 examples/heteroscedastic_inference
 examples/multioutput
+examples/nonstationary_terrain
 examples/oak
 examples/oceanmodelling
+examples/spacetime_temperature
 examples/spatial_linear_gp
 examples/xarray_workflow
 examples/yacht
