@@ -1,0 +1,48 @@
+name: Claude PR review
+
+# Runs the repository's `pr-reviewer` agent (.claude/agents/pr-reviewer.md) on a
+# pull request when a comment mentions `@claude-pr-review`. Text after the
+# mention reaches the agent as extra instructions.
+#
+# The action restores `.claude/` from the PR's base branch before Claude starts,
+# so a pull request cannot rewrite the instructions of its own reviewer. Changes
+# to the agent take effect once they are merged into `main`.
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  review:
+    name: Review the pull request
+    # Only PR comments that mention the agent, and only from the maintainer: the
+    # run is billed to a personal Claude subscription through
+    # CLAUDE_CODE_OAUTH_TOKEN.
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude-pr-review') &&
+      github.actor == 'thomaspinder'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # check out the code under review
+      pull-requests: write # inline review comments
+      issues: write # the tracking comment (PR comments are issue comments)
+      id-token: write # exchange the OIDC token for a Claude GitHub App token
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          # The action configures its own git credentials from the App token.
+          persist-credentials: false
+
+      - name: Run the reviewer agent
+        uses: anthropics/claude-code-action@cab360f6565aa35a51d6ce9e43f1f4287c0a32ea # v1.0.241
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          trigger_phrase: "@claude-pr-review"
+          claude_args: |
+            --agent pr-reviewer
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*)"
