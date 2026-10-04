@@ -126,6 +126,8 @@ dev = [
   # The `xarray` extra, repeated here because CI syncs without extras and the
   # `gpjax.xarray` tests must still run.
   "xarray>=2024.1",
+  # Lazy, Dask-backed grids in `GridSpec.predict`; tests only.
+  "dask>=2024.1",
   # Workflow security audit (`poe lint-actions`, .github/workflows/zizmor.yml).
   # Pinned through uv.lock rather than `uvx zizmor@latest` so a new release
   # cannot turn every open PR red without a commit.

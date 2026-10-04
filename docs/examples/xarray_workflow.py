@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # Gridded Data with xarray
+# # Working with Gridded Data
 #
 # Download this notebook: {nb-download}`xarray_workflow.ipynb`
 #
@@ -32,10 +32,14 @@
 # 1. flatten a gappy, labelled field into a `Dataset` with
 #    [`from_xarray`](#gpjax.xarray.from_xarray),
 # 2. fit a GP exactly as we would on any other `Dataset`,
-# 3. build inputs for a finer prediction grid with
-#    [`GridSpec.inputs_for`](#gpjax.xarray.GridSpec.inputs_for), and
-# 4. map the predictions, and joint posterior samples, back onto that grid with
+# 3. predict the mean and variance on a finer grid with
+#    [`GridSpec.predict`](#gpjax.xarray.GridSpec.predict), and
+# 4. draw joint posterior samples on that grid with
+#    [`GridSpec.inputs_for`](#gpjax.xarray.GridSpec.inputs_for) and
 #    [`GridSpec.to_xarray`](#gpjax.xarray.GridSpec.to_xarray).
+#
+# For the same workflow on real data, see
+# [Infilling Global Surface Temperature](infilling_surface_temperature.py).
 #
 # The module needs the optional extra: `pip install "gpjax[xarray]"`.
 
@@ -59,7 +63,10 @@ config.update("jax_enable_x64", True)
 
 with install_import_hook("gpjax", "beartype.beartype"):
     import gpjax as gpx
-    from gpjax.xarray import from_xarray
+    from gpjax.xarray import (
+        Standardise,
+        from_xarray,
+    )
 
 key = jr.key(42)
 gpx.plotting.use_style()
@@ -131,10 +138,19 @@ plt.show()
 # (`elevation`), and the columns of $\mathbf{X}$ follow the order we list them in.
 # Cells where the target or any input is NaN are dropped by default, and the
 # returned `GridSpec` records which ones.
+#
+# Temperature varies over degrees of latitude and longitude, but over hundreds of
+# metres of elevation. The [`Standardise`](#gpjax.xarray.Standardise) transform
+# scales each input to zero mean and unit standard deviation over the training
+# cells, so one starting lengthscale suits every input. The spec keeps the
+# training mean and standard deviation, and applies them to every grid that we
+# predict on.
 
 # %%
 inputs = ["lat", "lon", "elevation"]
-data, spec = from_xarray(observed, target="t2m", inputs=inputs)
+data, spec = from_xarray(
+    observed, target="t2m", inputs=inputs, transforms=[Standardise()]
+)
 
 print(data)
 print(spec)
@@ -146,14 +162,13 @@ print(spec)
 #
 # ## Fitting the model
 #
-# Temperature varies over hundreds of kilometres in latitude and longitude but
-# over hundreds of metres in elevation, so we give the RBF kernel one lengthscale
-# per input. A constant mean absorbs the ~285 K offset.
+# We give the RBF kernel one lengthscale per input, in units of that input's
+# standard deviation. A constant mean absorbs the ~285 K offset.
 
 # %%
 prior = gpx.gps.Prior(
     mean_function=gpx.mean_functions.Constant(jnp.array([285.0])),
-    kernel=gpx.kernels.RBF(lengthscale=jnp.array([3.0, 3.0, 1000.0]), variance=25.0),
+    kernel=gpx.kernels.RBF(lengthscale=jnp.ones(3), variance=25.0),
 )
 model = prior * gpx.likelihoods.Gaussian(obs_stddev=jnp.array(0.5))
 
@@ -169,19 +184,28 @@ model, history = gpx.fit_scipy(
 # %% [markdown]
 # ## Predicting on a finer grid
 #
-# `spec.inputs_for` builds the prediction inputs for any grid that holds the same
-# input variables, encoded exactly as in training. Here we predict on a grid four
-# times finer in each direction, including the cells that were missing from the
-# observations. We pass the likelihood's predictive distribution, so the variance
-# includes observation noise.
+# `spec.predict` gives the predictive mean and variance on any grid that holds the
+# same input variables, encoded exactly as in training. Here we predict on a grid
+# four times finer in each direction, including the cells that were missing from
+# the observations. The function we pass maps a block of inputs to a
+# distribution. We use the likelihood's predictive distribution, so the variance
+# includes observation noise, and a diagonal covariance, because we need only the
+# variance of each cell.
+#
+# `spec.predict` sends the cells to this function in chunks of `chunk_size`, so
+# the memory use stays the same for a global grid. If the grid holds Dask
+# arrays, the result is lazy, and each Dask block is predicted only when it is
+# computed or written with `to_netcdf`.
 
 # %%
 fine = regional_field(np.linspace(40.0, 54.0, 45), np.linspace(2.0, 22.0, 61))
-test_inputs, test_spec = spec.inputs_for(fine[["elevation"]])
-
 posterior = model.condition(data)
-predictive = model.likelihood(posterior(test_inputs))
-prediction = test_spec.to_xarray(predictive)
+
+prediction = spec.predict(
+    lambda x: model.likelihood(posterior(x, covariance="diagonal")),
+    fine[["elevation"]],
+    chunk_size=1024,
+)
 prediction
 
 # %% [markdown]
@@ -225,12 +249,15 @@ plt.show()
 # = \tfrac{1}{|\mathcal{R}|^2} \sum_{i, j \in \mathcal{R}} \operatorname{Cov}[f_i, f_j],
 # $$ (eq-xarray-regional-variance)
 #
-# which the per-cell variances alone cannot give. Passing `num_samples` to
-# `to_xarray` draws from the joint predictive distribution instead, and returns the
-# draws with a leading `sample` dimension. Averaging each draw over the region gives
-# samples of the regional mean.
+# which the per-cell variances alone cannot give. For this we need the full
+# covariance, so we build all the prediction inputs at once with
+# `spec.inputs_for`. Passing `num_samples` to `to_xarray` then draws from the joint
+# predictive distribution, and returns the draws with a leading `sample`
+# dimension. Averaging each draw over the region gives samples of the regional
+# mean.
 
 # %%
+test_inputs, test_spec = spec.inputs_for(fine[["elevation"]])
 latent = posterior(test_inputs)  # the field itself, without observation noise
 key, sample_key = jr.split(key)
 samples = test_spec.to_xarray(latent, num_samples=500, key=sample_key)
@@ -257,6 +284,34 @@ print(f"Standard deviation if cells were independent: {naive_std:.3f} K")
 # samples keep that correlation, which is why `to_xarray` refuses to draw samples
 # from a distribution that only holds marginal variances (as returned by
 # `posterior(test_inputs, covariance="diagonal")`).
+#
+# ## Global grids and seasonal cycles
+#
+# Latitude and longitude in degrees are not good inputs for a global field. A
+# degree of longitude is about 111 km at the equator but only 38 km at 70°N, and
+# longitude 359° is next to 0°. The
+# [`UnitSphere`](#gpjax.xarray.UnitSphere) transform replaces `lat` and `lon` with
+# the three coordinates of a point on the unit sphere. A stationary kernel on these
+# coordinates uses the chord distance through the Earth, which has no seam and no
+# distortion at the poles. In the same way, [`Cyclic`](#gpjax.xarray.Cyclic)
+# encodes a periodic input as a point on a circle. Datetime inputs are days since
+# their first timestamp, so a period of 365.25 gives the seasonal cycle:
+#
+# ```python
+# data, spec = from_xarray(
+#     ds,
+#     target="t2m",
+#     inputs=["lat", "lon", "time", "elevation"],
+#     transforms=[UnitSphere(), Cyclic("time", 365.25), Standardise(["elevation"])],
+# )
+# spec.columns
+# # ('sphere_x', 'sphere_y', 'sphere_z', 'time_sin', 'time_cos', 'elevation')
+# ```
+#
+# The transforms run in order, and `spec.columns` names the columns of
+# $\mathbf{X}$ that they produce, one for each kernel lengthscale.
+# [Infilling Global Surface Temperature](infilling_surface_temperature.py) uses
+# `UnitSphere` on a real global field.
 #
 # ## System configuration
 

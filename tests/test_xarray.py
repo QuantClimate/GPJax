@@ -19,7 +19,12 @@ import sys
 
 from gpjax.dataset import Dataset
 from gpjax.distributions import GaussianDistribution
-from gpjax.xarray import from_xarray
+from gpjax.xarray import (
+    Cyclic,
+    Standardise,
+    UnitSphere,
+    from_xarray,
+)
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -327,11 +332,19 @@ def test_fit_on_a_coarse_grid_and_predict_on_a_finer_one():
         verbose=False,
     )
 
+    posterior = model.condition(data)
     test_inputs, test_spec = spec.inputs_for(fine.drop_vars("t2m"))
-    out = test_spec.to_xarray(model.condition(data)(test_inputs))
+    out = test_spec.to_xarray(posterior(test_inputs))
 
     assert out["t2m_mean"].sizes == {"lat": 11, "lon": 13}
     np.testing.assert_allclose(out["t2m_mean"], fine["t2m"], atol=0.1)
+
+    chunked = spec.predict(
+        lambda x: posterior(x, covariance="diagonal"),
+        fine.drop_vars("t2m"),
+        chunk_size=50,
+    )
+    xr.testing.assert_allclose(chunked, out)
 
 
 def test_samples_from_a_tagged_diagonal_covariance_are_refused(two_cell_field):
@@ -401,3 +414,229 @@ def test_inputs_of_any_numeric_dtype_become_floats(dtype):
 
     np.testing.assert_array_equal(data.X[:, 0], [0.0, 1.0])
     assert data.X.dtype == jnp.float64
+
+
+# --- Input transforms -------------------------------------------------------
+
+
+def test_standardise_gives_columns_with_zero_mean_and_unit_std(field):
+    data, spec = from_xarray(
+        field, target="t2m", inputs=["lat", "elevation"], transforms=[Standardise()]
+    )
+
+    np.testing.assert_allclose(data.X.mean(axis=0), 0.0, atol=1e-12)
+    np.testing.assert_allclose(data.X.std(axis=0), 1.0)
+    (standardise,) = spec.transforms
+    assert standardise.loc == {"lat": 15.0, "elevation": 350.0}
+
+
+def test_standardise_scales_a_new_grid_with_the_training_statistics(field):
+    data, spec = from_xarray(
+        field, target="t2m", inputs=["elevation"], transforms=[Standardise()]
+    )
+    (standardise,) = spec.transforms
+    grid = xr.Dataset(
+        {"elevation": ("site", [350.0, 350.0 + standardise.scale["elevation"]])}
+    )
+
+    test_inputs, _ = spec.inputs_for(grid)
+
+    np.testing.assert_allclose(test_inputs[:, 0], [0.0, 1.0])
+    # elevation(lat, lon) alone spans 6 cells: the first time step of training.
+    training_inputs, _ = spec.inputs_for(field.drop_vars("t2m"))
+    np.testing.assert_allclose(training_inputs, data.X[:6])
+
+
+def test_standardise_changes_only_the_named_columns(field):
+    data, _ = from_xarray(
+        field,
+        target="t2m",
+        inputs=["lat", "elevation"],
+        transforms=[Standardise(["elevation"])],
+    )
+
+    np.testing.assert_array_equal(np.unique(data.X[:, 0]), [10.0, 20.0])
+    np.testing.assert_allclose(data.X[:, 1].std(), 1.0)
+
+
+def test_standardise_rejects_a_constant_input(field):
+    field["flat"] = (("lat", "lon"), np.ones((2, 3)))
+
+    with pytest.raises(ValueError, match=r"cannot standardise \['flat'\]"):
+        from_xarray(field, target="t2m", inputs=["flat"], transforms=[Standardise()])
+
+
+def test_standardise_rejects_a_bare_string():
+    with pytest.raises(TypeError, match=r"\['lat'\]"):
+        Standardise("lat")
+
+
+def test_unit_sphere_replaces_lat_and_lon_with_unit_vectors():
+    lons = np.array([0.0, 90.0, 360.0])
+    field = xr.Dataset(
+        {"t2m": (("lat", "lon"), np.zeros((2, 3)))},
+        coords={"lat": [0.0, 90.0], "lon": lons, "level": 1.0},
+    )
+    field["height"] = (("lat", "lon"), np.arange(6.0).reshape(2, 3))
+
+    data, spec = from_xarray(
+        field, target="t2m", inputs=["height", "lat", "lon"], transforms=[UnitSphere()]
+    )
+
+    assert spec.columns == ("height", "sphere_x", "sphere_y", "sphere_z")
+    xyz = np.asarray(data.X[:, 1:])
+    np.testing.assert_allclose(np.linalg.norm(xyz, axis=1), 1.0)
+    # On the equator: lon 0 -> +x, lon 90 -> +y, and lon 360 is lon 0 again.
+    np.testing.assert_allclose(xyz[:3], [[1, 0, 0], [0, 1, 0], [1, 0, 0]], atol=1e-12)
+    # At the pole every longitude is the same point.
+    np.testing.assert_allclose(xyz[3:], [[0, 0, 1]] * 3, atol=1e-12)
+
+
+def test_unit_sphere_rejects_latitude_outside_the_degree_range(field):
+    field = field.assign_coords(lat=[10.0, 100.0])
+
+    with pytest.raises(ValueError, match=r"outside \[-90, 90\]"):
+        from_xarray(
+            field, target="t2m", inputs=["lat", "lon"], transforms=[UnitSphere()]
+        )
+
+
+def test_cyclic_maps_values_one_period_apart_to_the_same_point(field):
+    data, spec = from_xarray(
+        field, target="t2m", inputs=["lon"], transforms=[Cyclic("lon", period=2.0)]
+    )
+
+    assert spec.columns == ("lon_sin", "lon_cos")
+    # lon is 0, 1, 2 along each row: 0 and 2 are one period apart.
+    np.testing.assert_allclose(data.X[0], data.X[2], atol=1e-12)
+    np.testing.assert_allclose(data.X[1], [0.0, -1.0], atol=1e-12)
+
+
+def test_cyclic_on_a_datetime_input_uses_days_since_the_origin(field):
+    data, _ = from_xarray(
+        field, target="t2m", inputs=["time"], transforms=[Cyclic("time", period=8.0)]
+    )
+
+    # The second timestamp is 2 days, a quarter period, after the first.
+    np.testing.assert_allclose(data.X[0], [0.0, 1.0], atol=1e-12)
+    np.testing.assert_allclose(data.X[-1], [1.0, 0.0], atol=1e-12)
+
+
+@pytest.mark.parametrize("period", [0.0, -1.0])
+def test_cyclic_rejects_a_non_positive_period(period):
+    with pytest.raises(ValueError, match="period must be positive"):
+        Cyclic("time", period=period)
+
+
+def test_a_transform_reports_a_missing_column(field):
+    with pytest.raises(ValueError, match=r"UnitSphere needs columns \['lon'\]"):
+        from_xarray(field, target="t2m", inputs=["lat"], transforms=[UnitSphere()])
+
+
+def test_a_transform_may_not_overwrite_another_column(field):
+    field["lon_sin"] = (("lat", "lon"), np.zeros((2, 3)))
+
+    with pytest.raises(ValueError, match=r"\['lon_sin'\].*already taken"):
+        from_xarray(
+            field,
+            target="t2m",
+            inputs=["lon", "lon_sin"],
+            transforms=[Cyclic("lon", period=360.0)],
+        )
+
+
+def test_transforms_run_in_order_and_the_spec_names_the_columns(field):
+    data, spec = from_xarray(
+        field,
+        target="t2m",
+        inputs=["lat", "lon", "elevation"],
+        transforms=[UnitSphere(), Standardise(["elevation"])],
+    )
+
+    assert data.X.shape == (12, 4)
+    assert spec.columns == ("sphere_x", "sphere_y", "sphere_z", "elevation")
+    assert "columns=('sphere_x', 'sphere_y', 'sphere_z', 'elevation')" in repr(spec)
+
+
+# --- Chunked prediction ------------------------------------------------------
+
+
+def _toy_predict_fn(inputs):
+    """A deterministic stand-in for a posterior: one mean and variance per row."""
+    return _diagonal_gaussian(inputs.sum(axis=1), inputs[:, 0] ** 2 + 1.0)
+
+
+@pytest.fixture
+def gappy_grid(field) -> xr.Dataset:
+    """The field's inputs, with one NaN covariate cell and lat attrs."""
+    grid = field.drop_vars("t2m")
+    grid["elevation"][1, 2] = np.nan
+    grid["lat"].attrs = {"units": "degrees_north"}
+    return grid
+
+
+@pytest.mark.parametrize("chunk_size", [1, 5, 12, 100])
+def test_predict_matches_inputs_for_then_to_xarray(field, gappy_grid, chunk_size):
+    _, spec = from_xarray(
+        field,
+        target="t2m",
+        inputs=["time", "lat", "elevation"],
+        transforms=[Standardise()],
+    )
+    test_inputs, test_spec = spec.inputs_for(gappy_grid)
+    expected = test_spec.to_xarray(_toy_predict_fn(test_inputs))
+
+    out = spec.predict(_toy_predict_fn, gappy_grid, chunk_size=chunk_size)
+
+    xr.testing.assert_allclose(out, expected)
+    assert np.isnan(out["t2m_mean"][:, 1, 2]).all()
+    assert out["t2m_mean"].attrs == {"units": "K"}
+    assert out["t2m_variance"].attrs == {"units": "(K)^2"}
+
+
+def test_predict_compiles_once_for_every_chunk(field):
+    _, spec = from_xarray(field, target="t2m", inputs=["lat", "lon"])
+    traces = []
+
+    def predict_fn(inputs):
+        traces.append(inputs.shape)
+        return _toy_predict_fn(inputs)
+
+    spec.predict(predict_fn, field.drop_vars("t2m"), chunk_size=5)
+
+    assert traces == [(5, 2)]
+
+
+def test_predict_keeps_a_dask_grid_lazy(field, gappy_grid):
+    pytest.importorskip("dask")
+    _, spec = from_xarray(field, target="t2m", inputs=["time", "lat", "elevation"])
+    calls = []
+
+    def predict_fn(inputs):
+        calls.append(inputs.shape)
+        return _toy_predict_fn(inputs)
+
+    lazy = spec.predict(predict_fn, gappy_grid.chunk({"lat": 1}), chunk_size=4)
+
+    assert lazy["t2m_mean"].chunks is not None
+    assert calls == []
+    eager = spec.predict(_toy_predict_fn, gappy_grid, chunk_size=4)
+    xr.testing.assert_allclose(lazy.compute(), eager)
+
+
+@pytest.mark.parametrize("chunk_size", [0, -3])
+def test_predict_rejects_a_non_positive_chunk_size(field, chunk_size):
+    _, spec = from_xarray(field, target="t2m", inputs=["lat"])
+
+    with pytest.raises(ValueError, match="chunk_size must be positive"):
+        spec.predict(_toy_predict_fn, field, chunk_size=chunk_size)
+
+
+def test_predict_rejects_a_predict_fn_of_the_wrong_shape(field):
+    _, spec = from_xarray(field, target="t2m", inputs=["lat"])
+
+    def one_value(inputs):
+        return _diagonal_gaussian(inputs.sum(keepdims=True)[0], jnp.ones(1))
+
+    with pytest.raises(ValueError, match="one value per input"):
+        spec.predict(one_value, field, chunk_size=4)
