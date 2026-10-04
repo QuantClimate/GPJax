@@ -72,7 +72,7 @@ docs = [
   "playwright>=1.49",
   # -- Example notebook dependencies (unchanged) --
   "matplotlib>=3.7.1",
-  "qc-core>=0.0.3",           # QuantClimate "Calibrated Ledger" plot style
+  "qc-core>=0.0.4",           # QuantClimate "Calibrated Ledger" plot style
   "seaborn>=0.12.2",
   "networkx>=3.0",
   "ipython>=8.11.0",

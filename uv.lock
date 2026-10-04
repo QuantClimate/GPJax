@@ -900,7 +900,7 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'docs'", specifier = ">=1.5.3" },
     { name = "paramax", specifier = ">=0.0.5" },
     { name = "playwright", marker = "extra == 'docs'", specifier = ">=1.49" },
-    { name = "qc-core", marker = "extra == 'docs'", specifier = ">=0.0.3" },
+    { name = "qc-core", marker = "extra == 'docs'", specifier = ">=0.0.4" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "scikit-learn", marker = "extra == 'docs'", specifier = ">=1.5.1" },
     { name = "scipy", specifier = ">=1.14" },
@@ -2920,14 +2920,14 @@ wheels = [
 
 [[package]]
 name = "qc-core"
-version = "0.0.3"
+version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ea/98/dd422af8dc6091c7bbb237494dad9a4d6b4e407097a27901b68a0d15c470/qc_core-0.0.3.tar.gz", hash = "sha256:ee9b7d0df3d201ab10923e1fc3f2e4951fa1f687fd62a848ea5e43babde5fcc4", size = 10291, upload-time = "2026-10-04T05:16:32.895Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/f9/455c4568d27a9103dce16d68b39034759837ac37315fced082590abc3e43/qc_core-0.0.4.tar.gz", hash = "sha256:57ca906269fee22a8bc63e10ab24e45a531fc925da910142bd0a786ead637871", size = 985836, upload-time = "2026-10-04T06:34:47.79Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/fb/62f3f511fc1f341dd10fe7e5771e52a43cc8b0509c2e6ef7dd053abf92f7/qc_core-0.0.3-py3-none-any.whl", hash = "sha256:68745e964281914d600eebd580c1defbcfe3e55b8b005aea2c6b4cbaae63d395", size = 11991, upload-time = "2026-10-04T05:16:31.879Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/9d/5061a16bbe69e1a121ed12f3f9024571535cb04025fc6ac6bff964c96622/qc_core-0.0.4-py3-none-any.whl", hash = "sha256:1dab55e0cf797a5c88b2e2799009aee7d7306723562dc89879cbe14366f7c022", size = 985536, upload-time = "2026-10-04T06:34:46.535Z" },
 ]
 
 [[package]]
