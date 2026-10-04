@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Allow JAX and JAXlib 0.11 in downstream environments by removing the
   `<0.11` dependency bounds ([#801](https://github.com/QuantClimate/GPJax/issues/801)).
 
+### Fixed
+
+- Split `BlockDiag` input vectors with static input block sizes, so matrix-vector
+  products work under JIT and with rectangular blocks.
+
 ## [1.0.0] — 2026-09-28
 
 ### Added
