@@ -15,7 +15,10 @@
 
 """JaxKern."""
 
-from gpjax.kernels import stationary
+from gpjax.kernels import (
+    location_functions,
+    stationary,
+)
 from gpjax.kernels.additive import (
     OrthogonalAdditiveKernel,
 )
@@ -42,11 +45,14 @@ from gpjax.kernels.multioutput import (
 from gpjax.kernels.non_euclidean import GraphKernel
 from gpjax.kernels.nonstationary import (
     ArcCosine,
+    Gibbs,
     Linear,
     Polynomial,
+    VaryingAmplitude,
 )
 from gpjax.kernels.stationary import (
     RBF,
+    Gneiting,
     Matern12,
     Matern32,
     Matern52,
@@ -67,6 +73,8 @@ __all__ = [
     "DenseKernelComputation",
     "DiagonalKernelComputation",
     "EigenKernelComputation",
+    "Gibbs",
+    "Gneiting",
     "GraphKernel",
     "ICMKernel",
     "LCMKernel",
@@ -83,6 +91,8 @@ __all__ = [
     "ProductKernel",
     "RationalQuadratic",
     "SumKernel",
+    "VaryingAmplitude",
     "White",
+    "location_functions",
     "stationary",
 ]

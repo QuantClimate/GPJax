@@ -53,6 +53,7 @@ class PoweredExponential(StationaryKernel):
     """
 
     name: ClassVar[str] = "Powered Exponential"
+    isotropic_radial: ClassVar[bool] = True
     power: tp.Any
 
     def __init__(

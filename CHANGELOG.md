@@ -8,7 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Nonstationary and space–time kernels
+  ([#812](https://github.com/QuantClimate/GPJax/issues/812)).**
+  - `VaryingAmplitude(base_kernel, amplitude)` multiplies a base kernel by
+    $\sigma(x)\sigma(y)$, so that variability changes with location.
+  - `Gibbs(base_kernel, lengthscale)` lets the lengthscale of an isotropic base
+    kernel (RBF, the Matérn kernels, RationalQuadratic or PoweredExponential)
+    change with location. It is the Paciorek–Schervish construction, and it
+    reuses the existing kernels and their ARD lengthscales.
+  - `Gneiting(space_dims, time_dim)` is the nonseparable space–time kernel of
+    Gneiting (2002), with an interaction parameter $\beta$ (0 is separable).
+  - The new `gpjax.kernels.location_functions` module gives the functions of
+    location that the first two kernels use: `Constant`, `Linear` (log-linear in
+    selected covariate columns, starting at zero) and an abstract base class for
+    custom functions. A location function is not a mean function; see
+    `docs/adr/0001-location-functions.md`.
+  - Stationary kernels have a new class flag, `isotropic_radial`, which marks
+    the kernels that are valid Gibbs base kernels.
+  - A new example, *Nonstationary Kernels over Complex Terrain*, fits these
+    kernels to Colorado precipitation normals with elevation as the covariate.
+  - A new example, *Space–Time Modelling of Winter Temperature*, fits the
+    Gneiting kernel to daily NCEP-NCAR reanalysis temperature anomalies over
+    Europe and compares it with its separable version.
+
 ### Changed
+
+- `RFF`, and so pathwise sampling with `sample_approx`, now names the kernel it
+  cannot approximate and tells you to sample from the predictive distribution.
 
 - Allow JAX and JAXlib 0.11 in downstream environments by removing the
   `<0.11` dependency bounds ([#801](https://github.com/QuantClimate/GPJax/issues/801)).

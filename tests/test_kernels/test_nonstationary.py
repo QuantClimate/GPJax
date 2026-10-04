@@ -17,19 +17,45 @@ from itertools import product
 from typing import Any
 
 import equinox as eqx
+from gpjax.dataset import Dataset
+from gpjax.fit import fit
+from gpjax.gps import Prior
+from gpjax.kernels import location_functions
+from gpjax.kernels.approximations import RFF
 from gpjax.kernels.base import AbstractKernel
 from gpjax.kernels.computations import AbstractKernelComputation
 from gpjax.kernels.nonstationary import (
     ArcCosine,
+    Gibbs,
     Linear,
     Polynomial,
+    VaryingAmplitude,
 )
+from gpjax.kernels.stationary import (
+    RBF,
+    Matern12,
+    Matern32,
+    Matern52,
+    Periodic,
+    PoweredExponential,
+    RationalQuadratic,
+    White,
+)
+from gpjax.likelihoods import Gaussian
+from gpjax.mean_functions import Zero
+from gpjax.objectives import conjugate_mll
 from gpjax.parameters import NonNegativeReal, val
+from gpjax.summary import _collect
+from hypothesis import (
+    given,
+    strategies as st,
+)
 import jax
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
 import lineax as lx
+import optax as ox
 from paramax import AbstractUnwrappable
 import pytest
 
@@ -231,3 +257,195 @@ def test_arccosine_variance_stays_positive_under_optimisation():
     assert val(k_new.weight_variance) > 0.0
     gram = k_new.gram(x).as_matrix()
     assert jnp.all(jnp.isfinite(gram))
+
+
+# ---------------------------------------------------------------------------
+# Location-function kernels: VaryingAmplitude and Gibbs.
+#
+# Inputs have two space columns (0, 1) and one covariate column (2).
+# ---------------------------------------------------------------------------
+
+INPUTS = jr.uniform(jr.key(0), (40, 3), minval=-2.0, maxval=2.0)
+RADIAL_KERNELS = [
+    RBF,
+    Matern12,
+    Matern32,
+    Matern52,
+    RationalQuadratic,
+    PoweredExponential,
+]
+
+
+def _min_eigenvalue(kernel: AbstractKernel) -> float:
+    return float(jnp.linalg.eigvalsh(kernel.gram(INPUTS).as_matrix()).min())
+
+
+def _covariate_fn(weight: float) -> location_functions.Linear:
+    return location_functions.Linear(active_dims=[2], weights=[weight])
+
+
+@pytest.mark.parametrize("base", RADIAL_KERNELS)
+@pytest.mark.parametrize("wrapper", ["amplitude", "gibbs"])
+def test_zero_location_function_gives_the_base_kernel(base, wrapper):
+    base_kernel = base(active_dims=[0, 1], lengthscale=0.8, variance=1.7)
+    fn = location_functions.Constant()
+    kernel = (
+        VaryingAmplitude(base_kernel, amplitude=fn)
+        if wrapper == "amplitude"
+        else Gibbs(base_kernel, lengthscale=fn)
+    )
+    assert jnp.allclose(
+        kernel.gram(INPUTS).as_matrix(), base_kernel.gram(INPUTS).as_matrix()
+    )
+
+
+def test_varying_amplitude_scales_the_base_kernel():
+    base_kernel = Matern32(active_dims=[0, 1])
+    kernel = VaryingAmplitude(base_kernel, amplitude=_covariate_fn(0.6))
+    sigma = jnp.exp(0.6 * INPUTS[:, 2])
+    expected = sigma[:, None] * sigma[None, :] * base_kernel.gram(INPUTS).as_matrix()
+    assert jnp.allclose(kernel.gram(INPUTS).as_matrix(), expected)
+
+
+def test_varying_amplitude_diagonal_is_the_local_variance():
+    base_kernel = RBF(active_dims=[0, 1], variance=2.0)
+    kernel = VaryingAmplitude(base_kernel, amplitude=_covariate_fn(-0.4))
+    diagonal = kernel.diagonal(INPUTS).as_matrix().diagonal()
+    assert jnp.allclose(diagonal, 2.0 * jnp.exp(2 * -0.4 * INPUTS[:, 2]))
+
+
+def test_varying_amplitude_accepts_a_nonstationary_base_kernel():
+    kernel = VaryingAmplitude(Linear(active_dims=[0]), amplitude=_covariate_fn(0.3))
+    assert _min_eigenvalue(kernel) > -1e-8
+
+
+def test_varying_amplitude_rejects_rff():
+    rff = RFF(base_kernel=RBF(n_dims=3), num_basis_fns=5)
+    with pytest.raises(TypeError, match="one pair of points"):
+        VaryingAmplitude(rff, amplitude=location_functions.Constant())
+
+
+def test_wrappers_do_not_take_active_dims():
+    with pytest.raises(TypeError):
+        Gibbs(RBF(), lengthscale=location_functions.Constant(), active_dims=[0])
+
+
+def _paciorek_schervish(x, y, ell, base_lengthscale, variance):
+    """Direct Paciorek-Schervish Matern-3/2 with Sigma(x) = ell(x)^2 diag(l0^2)."""
+    sigma_x = jnp.diag((ell(x) * base_lengthscale) ** 2)
+    sigma_y = jnp.diag((ell(y) * base_lengthscale) ** 2)
+    sigma = (sigma_x + sigma_y) / 2
+    prefactor = (
+        jnp.linalg.det(sigma_x) ** 0.25
+        * jnp.linalg.det(sigma_y) ** 0.25
+        / jnp.sqrt(jnp.linalg.det(sigma))
+    )
+    h = x[:2] - y[:2]
+    r = jnp.sqrt(h @ jnp.linalg.solve(sigma, h) + 1e-36)
+    return variance * prefactor * (1 + jnp.sqrt(3.0) * r) * jnp.exp(-jnp.sqrt(3.0) * r)
+
+
+def test_gibbs_matches_the_paciorek_schervish_formula():
+    base_lengthscale = jnp.array([0.7, 1.3])
+    fn = _covariate_fn(0.9)
+    kernel = Gibbs(
+        Matern32(active_dims=[0, 1], lengthscale=base_lengthscale, variance=2.0),
+        lengthscale=fn,
+    )
+    ell = lambda x: jnp.exp(fn(x))
+    expected = jax.vmap(
+        lambda a: jax.vmap(
+            lambda b: _paciorek_schervish(a, b, ell, base_lengthscale, 2.0)
+        )(INPUTS)
+    )(INPUTS)
+    assert jnp.allclose(kernel.gram(INPUTS).as_matrix(), expected)
+
+
+@pytest.mark.parametrize("base", RADIAL_KERNELS)
+def test_gibbs_keeps_the_base_variance(base):
+    kernel = Gibbs(
+        base(active_dims=[0, 1], variance=1.7), lengthscale=_covariate_fn(1.2)
+    )
+    diagonal = kernel.diagonal(INPUTS).as_matrix().diagonal()
+    assert jnp.allclose(diagonal, 1.7)
+
+
+def test_gibbs_correlation_is_shorter_where_the_lengthscale_is_smaller():
+    kernel = Gibbs(Matern32(active_dims=[0, 1]), lengthscale=_covariate_fn(1.0))
+    low = jnp.array([[0.0, 0.0, -1.0], [0.5, 0.0, -1.0]])
+    high = low.at[:, 2].set(1.0)
+    assert kernel(low[0], low[1]) < kernel(high[0], high[1])
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        Periodic(),
+        White(),
+        RBF() + Matern32(),
+        RBF() * Matern32(),
+        Linear(),
+    ],
+    ids=["periodic", "white", "sum", "product", "linear"],
+)
+def test_gibbs_rejects_bases_that_are_not_isotropic_radial(base):
+    with pytest.raises(TypeError, match="isotropic radial"):
+        Gibbs(base, lengthscale=location_functions.Constant())
+
+
+@given(
+    weights=st.lists(st.floats(min_value=-1.5, max_value=1.5), min_size=2, max_size=2),
+    base_index=st.integers(min_value=0, max_value=len(RADIAL_KERNELS) - 1),
+)
+def test_location_function_kernels_are_positive_definite(weights, base_index):
+    base_kernel = RADIAL_KERNELS[base_index](active_dims=[0, 1], lengthscale=0.5)
+    gibbs = Gibbs(base_kernel, lengthscale=_covariate_fn(weights[0]))
+    kernel = VaryingAmplitude(gibbs, amplitude=_covariate_fn(weights[1]))
+    gram = kernel.gram(INPUTS).as_matrix()
+    assert jnp.allclose(gram, gram.T)
+    assert _min_eigenvalue(kernel) > -1e-8 * jnp.max(jnp.diag(gram))
+
+
+def test_location_function_kernels_fit_and_have_finite_gradients():
+    y = jnp.sin(INPUTS[:, :1] * 2.0) * jnp.exp(0.5 * INPUTS[:, 2:3])
+    data = Dataset(X=INPUTS, y=y)
+    kernel = VaryingAmplitude(
+        Gibbs(Matern52(active_dims=[0, 1]), lengthscale=_covariate_fn(0.0)),
+        amplitude=_covariate_fn(0.0),
+    )
+    model = Prior(mean_function=Zero(), kernel=kernel) * Gaussian()
+
+    objective = lambda m, d: -conjugate_mll(m, d)
+    grads = jax.jit(jax.grad(objective))(model, data)
+    assert all(jnp.all(jnp.isfinite(g)) for g in jax.tree_util.tree_leaves(grads))
+
+    fitted, history = fit(
+        model=model,
+        objective=objective,
+        train_data=data,
+        optim=ox.adam(0.05),
+        num_iters=30,
+        verbose=False,
+    )
+    assert history[-1] < history[0]
+    weight = val(fitted.prior.kernel.amplitude.weights)
+    assert not jnp.allclose(weight, 0.0)
+
+
+def test_summary_shows_location_function_parameters():
+    kernel = Gibbs(Matern32(active_dims=[0, 1]), lengthscale=_covariate_fn(0.1))
+    names = {r.name for r in _collect(Prior(mean_function=Zero(), kernel=kernel))}
+    assert "kernel.lengthscale.weights" in names
+    assert "kernel.base_kernel.lengthscale" in names
+
+
+@pytest.mark.parametrize("wrapper", ["amplitude", "gibbs"])
+def test_rff_names_the_kernel_it_cannot_approximate(wrapper):
+    fn = location_functions.Constant()
+    kernel = (
+        VaryingAmplitude(RBF(), amplitude=fn)
+        if wrapper == "amplitude"
+        else Gibbs(RBF(), lengthscale=fn)
+    )
+    with pytest.raises(TypeError, match=f"{type(kernel).__name__}.*sample_approx"):
+        RFF(base_kernel=kernel)

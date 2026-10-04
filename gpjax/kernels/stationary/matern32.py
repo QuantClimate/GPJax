@@ -40,6 +40,7 @@ class Matern32(StationaryKernel):
     """
 
     name: ClassVar[str] = "Matérn32"
+    isotropic_radial: ClassVar[bool] = True
 
     def __call__(
         self,

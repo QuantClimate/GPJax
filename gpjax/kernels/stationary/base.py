@@ -14,6 +14,8 @@
 # ==============================================================================
 
 
+from typing import ClassVar
+
 import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
@@ -49,6 +51,10 @@ class StationaryKernel(AbstractKernel):
     for each input dimension.
     """
 
+    # True when the kernel is a function of the lengthscale-scaled Euclidean
+    # distance only and is positive definite in every dimension. Gibbs accepts
+    # only such base kernels.
+    isotropic_radial: ClassVar[bool] = False
     lengthscale: AbstractUnwrappable = eqx.field(
         default_factory=lambda: PositiveReal(1.0)
     )

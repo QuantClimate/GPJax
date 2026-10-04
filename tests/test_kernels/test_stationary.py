@@ -20,6 +20,7 @@ from typing import Any
 from gpjax.kernels.computations import AbstractKernelComputation
 from gpjax.kernels.stationary import (
     RBF,
+    Gneiting,
     Matern12,
     Matern32,
     Matern52,
@@ -33,10 +34,16 @@ from gpjax.parameters import (
     NonNegativeReal,
     PositiveReal,
 )
+from hypothesis import (
+    given,
+    strategies as st,
+)
 import jax
 from jax import config
 import jax.numpy as jnp
+import jax.random as jr
 import lineax as lx
+import paramax
 from paramax import AbstractUnwrappable
 import pytest
 
@@ -254,3 +261,133 @@ def test_name_is_not_a_constructor_argument(kernel: type[StationaryKernel]):
     assert "name" not in [f.name for f in dataclasses.fields(kernel)]
     with pytest.raises(TypeError):
         kernel(name="renamed")
+
+
+# ---------------------------------------------------------------------------
+# Gneiting space-time kernel. Columns 0 and 1 are space, column 2 is time.
+# ---------------------------------------------------------------------------
+
+SPACE_TIME = jnp.concatenate(
+    [
+        jr.uniform(jr.key(1), (30, 2), minval=-2.0, maxval=2.0),
+        jr.uniform(jr.key(2), (30, 1), minval=0.0, maxval=5.0),
+    ],
+    axis=1,
+)
+
+
+def _fixed(value: float):
+    return paramax.non_trainable(jnp.array(value))
+
+
+def test_gneiting_with_zero_interaction_is_separable():
+    kernel = Gneiting(
+        space_dims=[0, 1],
+        time_dim=2,
+        variance=1.5,
+        space_lengthscale=0.8,
+        time_lengthscale=2.0,
+        alpha=0.7,
+        gamma=0.6,
+        beta=_fixed(0.0),
+    )
+    x, y = SPACE_TIME[0], SPACE_TIME[1]
+    h = jnp.linalg.norm(x[:2] - y[:2]) / 0.8
+    psi = (jnp.abs(x[2] - y[2]) / 2.0) ** (2 * 0.7) + 1.0
+    space = jnp.exp(-(h ** (2 * 0.6)))
+    time = psi ** (-2 / 2)
+    assert jnp.allclose(kernel(x, y), 1.5 * space * time)
+
+
+def test_gneiting_at_zero_lag_is_a_powered_exponential_in_space():
+    kernel = Gneiting(
+        space_dims=[0, 1], time_dim=2, variance=1.3, space_lengthscale=0.9, gamma=0.4
+    )
+    same_time = SPACE_TIME.at[:, 2].set(1.0)
+    powered = PoweredExponential(
+        active_dims=[0, 1], lengthscale=0.9, variance=1.3, power=2 * 0.4
+    )
+    assert jnp.allclose(
+        kernel.gram(same_time).as_matrix(), powered.gram(same_time).as_matrix()
+    )
+
+
+def test_gneiting_space_correlation_decays_more_slowly_at_longer_lags():
+    kernel = Gneiting(space_dims=[0, 1], time_dim=2, beta=0.9)
+    origin = jnp.array([0.0, 0.0, 0.0])
+
+    def correlation(distance, lag):
+        far = jnp.array([distance, 0.0, lag])
+        same = jnp.array([0.0, 0.0, lag])
+        return kernel(origin, far) / kernel(origin, same)
+
+    assert correlation(1.0, 0.0) < correlation(1.0, 3.0)
+
+
+def test_gneiting_diagonal_is_the_variance():
+    kernel = Gneiting(space_dims=[0, 1], time_dim=2, variance=2.5)
+    diagonal = kernel.diagonal(SPACE_TIME).as_matrix().diagonal()
+    assert jnp.allclose(diagonal, 2.5)
+
+
+@given(
+    alpha=st.floats(min_value=0.05, max_value=0.95),
+    beta=st.floats(min_value=0.05, max_value=0.95),
+    gamma=st.floats(min_value=0.05, max_value=0.95),
+    space_lengthscale=st.floats(min_value=0.2, max_value=3.0),
+    time_lengthscale=st.floats(min_value=0.2, max_value=3.0),
+)
+def test_gneiting_is_positive_definite(
+    alpha, beta, gamma, space_lengthscale, time_lengthscale
+):
+    kernel = Gneiting(
+        space_dims=[0, 1],
+        time_dim=2,
+        alpha=alpha,
+        beta=beta,
+        gamma=gamma,
+        space_lengthscale=space_lengthscale,
+        time_lengthscale=time_lengthscale,
+    )
+    gram = kernel.gram(SPACE_TIME).as_matrix()
+    assert jnp.allclose(gram, gram.T)
+    assert float(jnp.linalg.eigvalsh(gram).min()) > -1e-8
+
+
+def test_gneiting_accepts_fixed_values_at_the_bounds():
+    kernel = Gneiting(
+        space_dims=[0, 1],
+        time_dim=2,
+        alpha=_fixed(1.0),
+        beta=_fixed(1.0),
+        gamma=_fixed(1.0),
+    )
+    gram = kernel.gram(SPACE_TIME).as_matrix()
+    assert float(jnp.linalg.eigvalsh(gram).min()) > -1e-8
+
+
+def test_gneiting_gradients_are_finite_on_the_diagonal():
+    kernel = Gneiting(space_dims=[0, 1], time_dim=2, alpha=0.3, gamma=0.3)
+    grads = jax.grad(lambda k: jnp.sum(k.gram(SPACE_TIME).as_matrix()))(kernel)
+    assert all(jnp.all(jnp.isfinite(g)) for g in jax.tree_util.tree_leaves(grads))
+
+
+@pytest.mark.parametrize(
+    ("space_dims", "time_dim", "message"),
+    [
+        ([0, 1], 1, "both a space column and the time column"),
+        ([0, 0], 2, "repeated columns"),
+        ([], 2, "non-empty list"),
+        ([0, 1], [2], "time_dim"),
+    ],
+)
+def test_gneiting_rejects_invalid_columns(space_dims, time_dim, message):
+    with pytest.raises((ValueError, TypeError), match=message):
+        Gneiting(space_dims=space_dims, time_dim=time_dim)
+
+
+@pytest.mark.parametrize("name", ["alpha", "beta", "gamma"])
+@pytest.mark.parametrize("value", [0.0, 1.0, 1.5])
+def test_gneiting_rejects_trainable_values_outside_the_open_interval(name, value):
+    with pytest.raises(ValueError, match="non_trainable"):
+        Gneiting(space_dims=[0, 1], time_dim=2, **{name: value})

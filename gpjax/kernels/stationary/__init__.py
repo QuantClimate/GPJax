@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from gpjax.kernels.stationary.base import StationaryKernel
+from gpjax.kernels.stationary.gneiting import Gneiting
 from gpjax.kernels.stationary.matern12 import Matern12
 from gpjax.kernels.stationary.matern32 import Matern32
 from gpjax.kernels.stationary.matern52 import Matern52
@@ -25,6 +26,7 @@ from gpjax.kernels.stationary.white import White
 
 __all__ = [
     "RBF",
+    "Gneiting",
     "Matern12",
     "Matern32",
     "Matern52",
