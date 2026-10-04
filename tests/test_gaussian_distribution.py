@@ -6,6 +6,8 @@ import sys
 import jax
 import jax.numpy as jnp
 import lineax as lx
+import numpy as np
+import pytest
 
 
 def _load_distributions():
@@ -58,6 +60,26 @@ def test_sample_shape():
     d = GaussianDistribution(loc=mu, scale=cov)
     samples = d.sample(jax.random.key(0), sample_shape=(10,))
     assert samples.shape == (10, 2)
+
+
+@pytest.mark.parametrize(
+    "sample_shape", [(), (3,), (2, 3), (2, 2), (2, 1, 3), (0, 3), (2, 0)]
+)
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+def test_sample_matches_affine_normal_for_all_sample_axes(sample_shape, dtype):
+    mu = jnp.array([1.0, -2.0], dtype=dtype)
+    covariance = jnp.array([[2.0, 0.5], [0.5, 1.0]], dtype=dtype)
+    distribution = GaussianDistribution(
+        loc=mu, scale=lx.MatrixLinearOperator(covariance)
+    )
+    key = jax.random.key(17)
+    white_noise = jax.random.normal(key, shape=(*sample_shape, 2))
+    expected = mu + white_noise @ jnp.linalg.cholesky(covariance).T
+
+    for sample in [distribution.sample, jax.jit(distribution.sample, static_argnums=1)]:
+        actual = sample(key, sample_shape)
+        assert actual.shape == (*sample_shape, 2)
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_log_prob_standard_normal():
