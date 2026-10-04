@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`gpjax.xarray` input transforms.** `from_xarray(..., transforms=[...])`
+  turns the named inputs into the columns of `X`, and the `GridSpec` applies the
+  same fitted transforms to every new grid. `Standardise` scales inputs with the
+  training mean and standard deviation. `UnitSphere` maps latitude and longitude
+  to a point on the unit sphere, so a stationary kernel is valid on the whole
+  globe. `Cyclic` encodes a periodic input, such as the seasonal cycle, as a
+  point on a circle. `GridSpec.columns` names the resulting columns.
+- **`GridSpec.predict`: chunked prediction on large grids.**
+  `spec.predict(lambda x: posterior(x, covariance="diagonal"), grid)` gives the
+  predictive mean and variance as an `xr.Dataset`, with at most `chunk_size`
+  cells in memory at once and one compilation. A Dask-backed grid gives a lazy
+  result that is predicted block by block.
+- **The *Gridded Data with xarray* example now uses real data.** It reads a
+  netCDF file of the 2024 temperature anomaly from the NCEP-NCAR Reanalysis 1,
+  which is complete, and removes cells to test the infill against the truth.
+  Cells removed at random are filled well, and joint samples give a global mean
+  whose interval holds the truth. Cells removed because they are warm show how a
+  GP is biased, and overconfident, when data are missing not at random.
+
 ### Changed
 
 - Allow JAX and JAXlib 0.11 in downstream environments by removing the
