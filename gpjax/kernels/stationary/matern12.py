@@ -43,6 +43,7 @@ class Matern12(StationaryKernel):
     """
 
     name: ClassVar[str] = "Matérn12"
+    isotropic_radial: ClassVar[bool] = True
 
     def __call__(self, x: Float[Array, " D"], y: Float[Array, " D"]) -> ScalarFloat:
         x = self.slice_input(x) / val(self.lengthscale)

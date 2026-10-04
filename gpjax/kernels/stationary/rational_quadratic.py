@@ -51,6 +51,7 @@ class RationalQuadratic(StationaryKernel):
     """
 
     name: ClassVar[str] = "Rational Quadratic"
+    isotropic_radial: ClassVar[bool] = True
     alpha: tp.Any
 
     def __init__(

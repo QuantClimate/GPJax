@@ -36,7 +36,7 @@ class RFF(AbstractKernel):
 
     def __init__(
         self,
-        base_kernel: StationaryKernel,
+        base_kernel: AbstractKernel,
         num_basis_fns: int = 50,
         frequencies: tp.Union[Float[Array, "M D"], None] = None,
         compute_engine: BasisFunctionComputation = BasisFunctionComputation(),
@@ -88,7 +88,12 @@ class RFF(AbstractKernel):
             kernel (AbstractKernel): The kernel to be checked.
         """
         if not isinstance(kernel, StationaryKernel):
-            raise TypeError("RFF can only be applied to stationary kernels.")
+            raise TypeError(
+                "RFF needs a stationary kernel with a spectral density, but got "
+                f"{type(kernel).__name__}. Pathwise sampling (`sample_approx`) "
+                "uses RFF, so it does not support this kernel. Sample from the "
+                "predictive distribution instead."
+            )
 
         # check that the kernel has a spectral density
         _ = kernel.spectral_density

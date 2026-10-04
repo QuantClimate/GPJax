@@ -41,6 +41,7 @@ class Matern52(StationaryKernel):
     """
 
     name: ClassVar[str] = "Matérn52"
+    isotropic_radial: ClassVar[bool] = True
 
     def __call__(
         self, x: Float[Array, " D"], y: Float[Array, " D"]
