@@ -91,6 +91,15 @@ def test_log_prob_standard_normal():
     assert jnp.allclose(lp, expected, atol=1e-5)
 
 
+@pytest.mark.parametrize("sample_shape", [(), (3,), (2, 3), (0,)])
+def test_sample_zero_dimensional_event(sample_shape):
+    distribution = GaussianDistribution(
+        loc=jnp.zeros(0), scale=lx.MatrixLinearOperator(jnp.eye(0))
+    )
+    for sample in [distribution.sample, jax.jit(distribution.sample, static_argnums=1)]:
+        assert sample(jax.random.key(0), sample_shape).shape == (*sample_shape, 0)
+
+
 def test_covariance_returns_dense():
     mu = jnp.zeros(2)
     A = jnp.array([[2.0, 1.0], [1.0, 3.0]])
