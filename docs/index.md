@@ -182,6 +182,7 @@ examples/oceanmodelling
 examples/spatial_linear_gp
 examples/xarray_workflow
 examples/yacht
+examples/safe_optimization
 ```
 
 ```{toctree}
