@@ -1,4 +1,4 @@
-absl-py==2.3.1
+absl-py==2.5.0
 beartype==0.22.9
 colorama==0.4.6 ; sys_platform == 'win32'
 equinox==0.13.8
@@ -8,18 +8,18 @@ jaxlib==0.10.2 ; python_full_version < '3.12'
 jaxlib==0.11.2 ; python_full_version >= '3.12'
 jaxtyping==0.3.11
 lineax==0.1.1
-markdown-it-py==4.0.0
+markdown-it-py==4.2.0
 mdurl==0.1.2
-ml-dtypes==0.5.4
+ml-dtypes==0.6.0
 multipledispatch==1.0.0
 numpy==2.4.6
 numpyro==0.22.0
 opt-einsum==3.4.0
 optax==0.2.8
 paramax==0.0.5
-pygments==2.19.2
+pygments==2.21.0
 rich==15.0.0
 scipy==1.17.1
 tqdm==4.70.1
-typing-extensions==4.15.0
+typing-extensions==4.16.0
 wadler-lindig==0.1.7
