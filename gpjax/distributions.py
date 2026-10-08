@@ -14,6 +14,8 @@
 # ==============================================================================
 
 
+import math
+
 from beartype.typing import (
     Optional,
 )
@@ -122,7 +124,8 @@ class GaussianDistribution(Distribution):
         if not sample_shape:
             return affine_transformation(white_noise)
 
-        return vmap(affine_transformation)(white_noise)
+        flat_noise = white_noise.reshape((math.prod(sample_shape), self.event_shape[0]))
+        return vmap(affine_transformation)(flat_noise).reshape(white_noise.shape)
 
     @property
     def mean(self) -> Float[Array, " N"]:
