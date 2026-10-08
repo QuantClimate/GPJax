@@ -36,13 +36,19 @@
 #
 # We illustrate the full workflow on the UCI Auto MPG dataset.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 # Enable Float64 for more stable matrix inversions.
 from jax import config
 
 config.update("jax_enable_x64", True)
 
-from utils import use_mpl_style
 import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import install_import_hook
@@ -60,7 +66,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
     )
 
 key = jr.key(123)
-use_mpl_style()
+gpx.plotting.use_style()
 colours = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 
 # %% [markdown]

@@ -27,11 +27,17 @@
 # [official documentation](https://docs.kidger.site/equinox/).
 #
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import typing as tp
 
 import equinox as eqx
-from utils import use_mpl_style
 from gpjax.mean_functions import (
     AbstractMeanFunction,
     Constant,
@@ -72,7 +78,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 cols = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
 

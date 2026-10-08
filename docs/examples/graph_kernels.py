@@ -25,10 +25,16 @@
 # kernels supported within GPJax, see the
 # [kernels notebook](constructing_new_kernels.py).
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import random
 
-from utils import use_mpl_style
 
 # Enable Float64 for more stable matrix inversions.
 from jax import config
@@ -52,7 +58,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 key = jr.key(42)
 

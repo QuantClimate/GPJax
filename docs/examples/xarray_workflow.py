@@ -39,6 +39,13 @@
 #
 # The module needs the optional extra: `pip install "gpjax[xarray]"`.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 from jax import config
 import jax.numpy as jnp
@@ -46,7 +53,6 @@ import jax.random as jr
 from jaxtyping import install_import_hook
 import matplotlib.pyplot as plt
 import numpy as np
-from utils import use_mpl_style
 import xarray as xr
 
 config.update("jax_enable_x64", True)
@@ -56,7 +62,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
     from gpjax.xarray import from_xarray
 
 key = jr.key(42)
-use_mpl_style()
+gpx.plotting.use_style()
 
 # %% [markdown]
 # ## A synthetic temperature field
