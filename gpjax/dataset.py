@@ -75,7 +75,7 @@ class Dataset:
     @property
     def n(self) -> int:
         r"""Number of observations."""
-        return self.X.shape[0]
+        return self.X.shape[0] if self.X is not None else self.y.shape[0]
 
     @property
     def full_size(self) -> int:
