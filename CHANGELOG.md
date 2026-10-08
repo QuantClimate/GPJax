@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`PoweredExponential.power` is now constrained to $(0, 2]$
+  ([#813](https://github.com/QuantClimate/GPJax/issues/813)).** The kernel is
+  positive definite in every dimension only in this interval, but any value was
+  accepted, and `power=3.0` gave a Gram matrix with negative eigenvalues. A
+  float in $(0, 2)$ is now wrapped as a trainable `SigmoidBounded` parameter,
+  so `fit` learns the power and cannot move it outside the interval. Before
+  this change a float power was a plain Python float, which `fit` did not
+  train. `power=2.0` (the RBF case) stays fixed, and a value outside the
+  interval raises `ValueError`. The type of the `power` leaf changes, so code
+  that reads it should use `val(kernel.power)`.
+
 ### Changed
 
 - Allow JAX and JAXlib 0.11 in downstream environments by removing the

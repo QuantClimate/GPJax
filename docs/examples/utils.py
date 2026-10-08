@@ -1,8 +1,5 @@
-from pathlib import Path
-
 from matplotlib import transforms
 from matplotlib.patches import Ellipse
-import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -73,9 +70,4 @@ def clean_legend(ax):
     by_label = dict(zip(labels, handles, strict=False))
     ax.legend(by_label.values(), by_label.keys())
     return ax
-
-
-def use_mpl_style():
-    style_file = Path(__file__).parent / "gpjax.mplstyle"
-    plt.style.use(style_file)
 
