@@ -18,6 +18,7 @@ from typing import ClassVar
 import beartype.typing as tp
 import jax.numpy as jnp
 from jaxtyping import Float
+import paramax
 from paramax import AbstractUnwrappable
 
 from gpjax.kernels.base import val
@@ -27,6 +28,7 @@ from gpjax.kernels.computations import (
 )
 from gpjax.kernels.stationary.base import StationaryKernel
 from gpjax.kernels.stationary.utils import euclidean_distance
+from gpjax.parameters import SigmoidBounded
 from gpjax.typing import (
     Array,
     ScalarArray,
@@ -50,6 +52,13 @@ class PoweredExponential(StationaryKernel):
     See Diggle and Ribeiro (2007) - "Model-based Geostatistics".
     and
     https://en.wikipedia.org/wiki/Generalized_normal_distribution#Symmetric_version
+
+    The kernel is positive definite in every dimension only for
+    $0 < \kappa \le 2$. A float `power` in $(0, 2)$ becomes a trainable
+    parameter that the optimiser keeps inside $(0, 2)$. `power=2.0` gives the
+    RBF kernel and is held fixed, because a bounded parameter cannot sit on its
+    bound; to learn the power, start it inside the interval, for example at
+    1.9. A parameter that you pass yourself must keep the power in $(0, 2]$.
     """
 
     name: ClassVar[str] = "Powered Exponential"
@@ -64,7 +73,7 @@ class PoweredExponential(StationaryKernel):
         n_dims: tp.Union[int, None] = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
-        """Initializes the kernel.
+        r"""Initializes the kernel.
 
         Args:
             active_dims: the indices of the input dimensions that the kernel operates on.
@@ -73,13 +82,16 @@ class PoweredExponential(StationaryKernel):
                 used for all input dimensions. If an array with length > 1, the kernel is
                 anisotropic, meaning that a different lengthscale is used for each input.
             variance: the variance of the kernel σ.
-            power: the power of the kernel κ.
+            power: the power of the kernel κ, in $(0, 2]$.
             n_dims: the number of input dimensions. If `lengthscale` is an array, this
                 argument is ignored.
             compute_engine: the computation engine that the kernel uses to compute the
                 covariance matrix.
+
+        Raises:
+            ValueError: if the power is not in $(0, 2]$.
         """
-        self.power = power
+        self.power = _wrap_power(power)
 
         super().__init__(active_dims, lengthscale, variance, n_dims, compute_engine)
 
@@ -91,3 +103,18 @@ class PoweredExponential(StationaryKernel):
         power_val = val(self.power)
         K = val(self.variance) * jnp.exp(-(euclidean_distance(x, y) ** power_val))
         return K.squeeze()
+
+
+def _wrap_power(power: tp.Any) -> tp.Any:
+    value = float(val(power))
+    if not 0.0 < value <= 2.0:
+        raise ValueError(
+            "Expected `power` in (0, 2], where the powered exponential kernel is "
+            f"positive definite. Got {value}."
+        )
+    if isinstance(power, AbstractUnwrappable):
+        return power
+    power = jnp.asarray(power, dtype=float)
+    if value == 2.0:
+        return paramax.non_trainable(power)
+    return SigmoidBounded(power, low=0.0, high=2.0)

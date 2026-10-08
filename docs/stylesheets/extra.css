@@ -3,49 +3,86 @@
  * Everything here is a survivor of the old mkdocs-material `extra.css`; the
  * ~110 lines that targeted `.md-*` classes, the Material colour variables and
  * the `permalinks.css` headerlink mask are all Material-only and were dropped
- * with the theme. Shibuya's `accent_color` covers the palette that
- * `--md-primary-fg-color` used to force. */
+ * with the theme. Shibuya's `accent_color`, re-toned below, covers the palette
+ * that `--md-primary-fg-color` used to force. */
 
 /* -- Brand accent ------------------------------------------------------------
  *
- * conf.py can only name a radix ramp (`accent_color = "red"`); shibuya has no
- * way to take a hex. The ramp supplies every derived tint, and the exact brand
- * hex is pinned over the one step that carries the visible accent.
- *
- * `--accent-9` is that step. shibuya defines `--sy-c-link: var(--accent-9)`, and
- * `--sy-c-link` is what colours `.globaltoc > ul a.current`, `.localtoc > ul
- * li.active > a` and (via `--yue-c-link-border`) the underline under every prose
- * link, so overriding `--accent-9` alone reaches all of them.
- *
- * Scoped to `html[data-accent-color]` (specificity 0,2,0) to outrank shibuya's
- * own `[data-accent-color=red]` block (0,1,0). It is deliberately NOT scoped to
- * `html.light` / `html.dark`: shibuya switches colour mode with a class on this
- * same element and never re-declares `--accent-9`, so one unscoped declaration
- * holds in both modes. */
-html[data-accent-color] {
-    --gpjax-brand: #7a2e2a;
-    --accent-9: var(--gpjax-brand);
-    /* Local alias for the hand-styled pieces below. Note this is *not* a shibuya
-       variable -- the theme stylesheet never reads `--linkcolor`. */
-    --linkcolor: var(--gpjax-brand);
+ * The same oxblood scale as impulso (../impulso/docs/stylesheets/extra.css),
+ * so the two sites share one accent. */
+/* Re-tone the theme's Radix "crimson" accent to the ledger's oxblood
+   (qc_core.plotting.COLORS.oxblood #7a2e2a light, #cf6f60 dark). shibuya
+   maps every --accent-* token from --crimson-* (conf.py `accent_color`), so
+   overriding the scale recolors links, active nav, hovers, and focus rings
+   in one place. Selectors mirror the theme's own; both blocks are needed
+   because this file loads after the theme, where a lone :root block would
+   also override the theme's .dark values. Steps follow Radix semantics:
+   1-2 backgrounds, 3-5 washes, 6-8 borders, 9-10 solid, 11-12 text. */
+:root,
+.light,
+.light-theme {
+    --crimson-1: #fdf9f8;
+    --crimson-2: #fbf1ef;
+    --crimson-3: #f4e7e4;
+    --crimson-4: #eedad5;
+    --crimson-5: #e7cbc5;
+    --crimson-6: #ddb8b0;
+    --crimson-7: #cf9d93;
+    --crimson-8: #bd7d71;
+    --crimson-9: #7a2e2a;
+    --crimson-10: #5f231f;
+    --crimson-11: #7a2e2a;
+    --crimson-12: #43201d;
+    --crimson-a1: rgba(122, 46, 42, 0.03);
+    --crimson-a2: rgba(122, 46, 42, 0.05);
+    --crimson-a3: rgba(122, 46, 42, 0.1);
+    --crimson-a4: rgba(122, 46, 42, 0.15);
+    --crimson-a5: rgba(122, 46, 42, 0.21);
+    --crimson-a6: rgba(122, 46, 42, 0.28);
+    --crimson-a7: rgba(122, 46, 42, 0.38);
+    --crimson-a8: rgba(122, 46, 42, 0.52);
+    --crimson-a9: rgba(97, 6, 1, 0.84);
+    --crimson-a10: rgba(73, 5, 0, 0.88);
+    --crimson-a11: rgba(97, 6, 1, 0.84);
+    --crimson-a12: rgba(46, 7, 4, 0.9);
+    --crimson-contrast: #faf9f7;
+    --crimson-surface: #f8efeccc;
 }
 
-/* Dark mode needs a lighter step of the same ramp. The brand hex is built for a
- * white page: on shibuya's dark background (#111113) #7a2e2a measures 2.02:1,
- * under both the 4.5:1 AA text threshold and the 3:1 threshold for UI. Links and
- * the active sidebar entry are effectively unreadable.
- *
- * #d07b76 is the same colour lifted for a dark ground -- hue 3deg and saturation
- * 0.49 are both unchanged, only lightness moves (0.32 -> 0.64), which is how a
- * radix-style ramp is meant to be traversed. It measures 6.09:1, past AA and
- * close to AAA. A true colour-theory complement (cyan-green, hue 183deg) was
- * rejected: it reads as a different brand.
- *
- * `html.dark[data-accent-color]` is (0,2,1) against the (0,1,1) above, so it
- * wins regardless of source order. shibuya always sets the mode class, including
- * under `color_mode: "auto"`, so this holds when following the OS preference. */
-html.dark[data-accent-color] {
-    --gpjax-brand: #d07b76;
+.dark,
+.dark-theme {
+    --crimson-1: #1d1412;
+    --crimson-2: #241815;
+    --crimson-3: #35201b;
+    --crimson-4: #422620;
+    --crimson-5: #4e2c25;
+    --crimson-6: #5e352c;
+    --crimson-7: #754138;
+    --crimson-8: #955347;
+    --crimson-9: #cf6f60;
+    --crimson-10: #dd8171;
+    --crimson-11: #f2a291;
+    --crimson-12: #fbe1da;
+    --crimson-a1: rgba(207, 111, 96, 0.03);
+    --crimson-a2: rgba(207, 111, 96, 0.06);
+    --crimson-a3: rgba(207, 111, 96, 0.12);
+    --crimson-a4: rgba(207, 111, 96, 0.17);
+    --crimson-a5: rgba(207, 111, 96, 0.23);
+    --crimson-a6: rgba(207, 111, 96, 0.3);
+    --crimson-a7: rgba(207, 111, 96, 0.42);
+    --crimson-a8: rgba(207, 111, 96, 0.56);
+    --crimson-a9: rgba(252, 135, 117, 0.82);
+    --crimson-a10: rgba(254, 148, 130, 0.87);
+    --crimson-a11: rgba(255, 171, 153, 0.95);
+    --crimson-a12: rgba(255, 230, 222, 0.98);
+    --crimson-contrast: #201b19;
+    --crimson-surface: #35201b80;
+}
+
+/* Local alias for the hand-styled pieces below. Note this is *not* a shibuya
+   variable -- the theme stylesheet never reads `--linkcolor`. */
+:root {
+    --linkcolor: var(--accent-9);
 }
 
 /* -- Notebook cells follow the site's colour mode ----------------------------

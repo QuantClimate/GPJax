@@ -25,9 +25,15 @@
 # closed form, is covered in the [regression notebook](regression.py); everything that
 # follows is a consequence of losing that closed form.
 
+# %% tags=["remove-cell"]
+import logging
+
+# The build host may not have the ledger fonts (Public Sans, Spectral); hide
+# matplotlib's font fallback messages.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
+
 # %%
 import equinox as eqx
-from utils import use_mpl_style
 from gpjax.linalg import add_jitter, cholesky_factor
 from gpjax.parameters import val
 import jax
@@ -57,7 +63,7 @@ with install_import_hook("gpjax", "beartype.beartype"):
 identity_matrix = jnp.eye
 
 # set the default style for plotting
-use_mpl_style()
+gpx.plotting.use_style()
 
 key = jr.key(42)
 cols = plt.rcParams["axes.prop_cycle"].by_key()["color"]

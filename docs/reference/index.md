@@ -24,6 +24,7 @@ linalg
 integrators
 scan
 summary
+plotting
 typing
 citation
 ```
