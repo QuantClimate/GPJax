@@ -1,5 +1,7 @@
 """Custom Lineax operators for GPJax."""
 
+from itertools import accumulate
+
 import jax
 import jax.numpy as jnp
 import lineax as lx
@@ -14,8 +16,8 @@ class BlockDiag(lx.AbstractLinearOperator):
         self.blocks = tuple(blocks)
 
     def mv(self, x):
-        sizes = [b.out_structure().shape[0] for b in self.blocks]
-        splits = jnp.cumsum(jnp.array(sizes[:-1]))
+        sizes = [b.in_structure().shape[0] for b in self.blocks]
+        splits = tuple(accumulate(sizes[:-1]))
         xs = jnp.split(x, splits)
         ys = [b.mv(xi) for b, xi in zip(self.blocks, xs, strict=False)]
         return jnp.concatenate(ys)
