@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload the SARIF report
         if: always()
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         # Pull requests from forks get a read-only GITHUB_TOKEN, so the upload
         # is rejected there. That must not fail the audit — the findings still
         # appear in the step log below, and the gate step still blocks the PR.
