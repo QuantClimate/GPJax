@@ -64,36 +64,27 @@ def _large_c_scaled_ive(c, truncation_order: int):
 def _miller_downward_scaled_ive(c, truncation_order: int):
     """Miller's downward recurrence for Ĩ_k(c), rescaled by i0e(c).
 
-    Start at `k_max = 2 * truncation_order + 20` with seeds
-    (ratio_{k_max} = 0, ratio_{k_max-1} = 1); apply downward recurrence
-        ratio_{k-1} = (2k / c) * ratio_k + ratio_{k+1}
-    until ratio_0; rescale all ratios by the exact Ĩ_0(c) = i0e(c) / ratio_0.
-    `k_max` is static (compile-time) so the loop unrolls under jit; `c` stays
-    traced.
+    The recurrence runs on the ratios r_k = I_k(c) / I_{k-1}(c). It starts at
+    `k_max = 2 * truncation_order + 20` with r_{k_max + 1} = 0 and steps down with
+        r_k = c / (2k + c r_{k+1}),
+    which is Miller's recurrence I_{k-1} = (2k / c) I_k + I_{k+1} divided through by
+    I_k. Then Ĩ_k(c) = i0e(c) · r_1 · … · r_k. Each ratio is in (0, 1), so nothing
+    overflows: the unnormalised Miller values grow like (2 k_max / c)^{k_max} and
+    overflow for small c and large truncation orders, which gives zeros or NaNs
+    after the rescale. `k_max` is static (compile-time); `c` stays traced.
     """
     c = jnp.asarray(c)
     k_max = 2 * truncation_order + 20
 
-    def body(k_iteration, state):
-        ratios, ratio_k_plus_1, ratio_k = state
-        # Downward index: k_iteration 1 → current k = k_max-1; recurrence
-        # computes ratio at (current_k - 1) from ratio_k, ratio_{k+1}.
-        current_k = k_max - k_iteration
-        ratio_k_minus_1 = (2.0 * current_k / c) * ratio_k + ratio_k_plus_1
-        ratios = ratios.at[current_k - 1].set(ratio_k_minus_1)
-        return (ratios, ratio_k, ratio_k_minus_1)
+    def recurrence_step(ratio_above, order):
+        ratio = c / (2.0 * order + c * ratio_above)
+        return ratio, ratio
 
-    initial_ratios = jnp.zeros(k_max + 1, dtype=c.dtype)
-    initial_ratios = initial_ratios.at[k_max].set(jnp.asarray(0.0, c.dtype))
-    initial_ratios = initial_ratios.at[k_max - 1].set(jnp.asarray(1.0, c.dtype))
-    ratios, _, _ = jax.lax.fori_loop(
-        1,
-        k_max,
-        body,
-        (initial_ratios, jnp.asarray(0.0, c.dtype), jnp.asarray(1.0, c.dtype)),
-    )
-    rescale = jsp.i0e(c) / ratios[0]
-    return ratios[: truncation_order + 1] * rescale
+    orders = jnp.arange(k_max, 0, -1, dtype=c.dtype)
+    _, ratios = jax.lax.scan(recurrence_step, jnp.zeros((), c.dtype), orders)
+    # `ratios` holds r_{k_max}, ..., r_1; keep r_1, ..., r_truncation_order.
+    ratios = ratios[::-1][:truncation_order]
+    return jsp.i0e(c) * jnp.concatenate([jnp.ones(1, c.dtype), jnp.cumprod(ratios)])
 
 
 def _tiny_c_series_scaled_ive(c, truncation_order: int):
