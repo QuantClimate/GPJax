@@ -62,6 +62,17 @@ def test_dataset_init(n: int, in_dim: int) -> None:
     assert jtu.tree_leaves(D) == [x, y]
 
 
+@pytest.mark.parametrize("n", [0, 1, 3])
+@pytest.mark.parametrize("n_outputs", [1, 2])
+def test_unsupervised_dataset_observation_count(n, n_outputs):
+    data = Dataset(y=jnp.ones((n, n_outputs)))
+    assert data.is_unsupervised()
+    assert data.n == n
+    assert data.full_size == n
+    leaves, treedef = jtu.tree_flatten(data)
+    assert jtu.tree_unflatten(treedef, leaves).n == n
+
+
 @pytest.mark.parametrize("n1", [1, 2, 10])
 @pytest.mark.parametrize("n2", [1, 2, 10])
 @pytest.mark.parametrize("in_dim", [1, 2, 10])
