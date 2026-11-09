@@ -8,7 +8,12 @@ name: Claude PR review
 # so a pull request cannot rewrite the instructions of its own reviewer. Changes
 # to the agent take effect once they are merged into `main`.
 on:
-  issue_comment:
+  # zizmor flags `issue_comment` as a dangerous trigger: the run has the base
+  # repository's token and secrets, for a comment on any pull request. Here the
+  # job runs only for comments from the maintainer (the `if:` below), and nothing
+  # executes the pull request's code: Claude reads the diff, and the action
+  # restores `.claude/` from the base branch.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 
 permissions: {}
