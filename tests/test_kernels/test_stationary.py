@@ -32,11 +32,14 @@ from gpjax.kernels.stationary.base import StationaryKernel
 from gpjax.parameters import (
     NonNegativeReal,
     PositiveReal,
+    SigmoidBounded,
+    val,
 )
 import jax
 from jax import config
 import jax.numpy as jnp
 import lineax as lx
+import paramax
 from paramax import AbstractUnwrappable
 import pytest
 
@@ -254,3 +257,46 @@ def test_name_is_not_a_constructor_argument(kernel: type[StationaryKernel]):
     assert "name" not in [f.name for f in dataclasses.fields(kernel)]
     with pytest.raises(TypeError):
         kernel(name="renamed")
+
+
+# ---------------------------------------------------------------------------
+# PoweredExponential power is constrained to (0, 2] (#813).
+# ---------------------------------------------------------------------------
+
+
+def test_powered_exponential_power_is_trainable_and_bounded():
+    kernel = PoweredExponential(power=1.5)
+    assert isinstance(kernel.power, SigmoidBounded)
+    assert jnp.allclose(val(kernel.power), 1.5)
+    # A large step in the unconstrained space cannot leave the interval.
+    stepped = jax.tree_util.tree_map(lambda leaf: leaf + 100.0, kernel)
+    assert 0.0 < float(val(stepped.power)) <= 2.0
+
+
+def test_powered_exponential_power_two_is_fixed():
+    kernel = PoweredExponential(power=2.0)
+    assert isinstance(kernel.power, paramax.NonTrainable)
+    assert jnp.allclose(val(kernel.power), 2.0)
+
+
+@pytest.mark.parametrize("power", [-1.0, 0.0, 2.5, 3.0])
+def test_powered_exponential_rejects_power_outside_the_interval(power):
+    with pytest.raises(ValueError, match=r"\(0, 2\]"):
+        PoweredExponential(power=power)
+
+
+def test_powered_exponential_rejects_an_invalid_parameter():
+    with pytest.raises(ValueError, match=r"\(0, 2\]"):
+        PoweredExponential(power=PositiveReal(3.0))
+
+
+def test_powered_exponential_accepts_a_valid_parameter():
+    power = PositiveReal(1.2)
+    assert PoweredExponential(power=power).power is power
+
+
+@pytest.mark.parametrize("power", [0.3, 1.0, 1.7, 2.0])
+def test_powered_exponential_is_positive_definite(power):
+    X = jnp.linspace(0.0, 5.0, 200)[:, None]
+    gram = PoweredExponential(power=power).gram(X).as_matrix()
+    assert float(jnp.linalg.eigvalsh(gram).min()) > -1e-8
