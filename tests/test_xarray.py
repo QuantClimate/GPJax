@@ -624,6 +624,27 @@ def test_predict_keeps_a_dask_grid_lazy(field, gappy_grid):
     xr.testing.assert_allclose(lazy.compute(), eager)
 
 
+def test_predict_keeps_a_dask_grid_of_coordinates_lazy(field):
+    pytest.importorskip("dask")
+    _, spec = from_xarray(field, target="t2m", inputs=["lat", "lon"])
+    calls = []
+
+    def predict_fn(inputs):
+        calls.append(inputs.shape)
+        return _toy_predict_fn(inputs)
+
+    # `chunk` makes Dask arrays of the data variables only. The inputs are index
+    # coordinates, which stay NumPy arrays, so the blocks come from `obj`.
+    grid = field.chunk({"lat": 1})
+    assert grid["lat"].chunks is None
+    lazy = spec.predict(predict_fn, grid, chunk_size=4)
+
+    assert lazy["t2m_mean"].chunks == ((1, 1), (3,))
+    assert calls == []
+    eager = spec.predict(_toy_predict_fn, field, chunk_size=4)
+    xr.testing.assert_allclose(lazy.compute(), eager)
+
+
 @pytest.mark.parametrize("chunk_size", [0, -3])
 def test_predict_rejects_a_non_positive_chunk_size(field, chunk_size):
     _, spec = from_xarray(field, target="t2m", inputs=["lat"])

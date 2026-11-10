@@ -339,14 +339,20 @@ class GridSpec:
         r"""Predict the mean and variance on a new grid, in chunks.
 
         The grid is built from ``obj`` as in :meth:`inputs_for`, but the cells
-        go to ``predict_fn`` at most ``chunk_size`` at a time, so the memory use
-        does not grow with the size of the grid. The last chunk is padded to
-        ``chunk_size``, so ``predict_fn`` is compiled once, with ``jax.jit``.
+        go to ``predict_fn`` at most ``chunk_size`` at a time. Thus the memory
+        that ``predict_fn`` uses, for example a ``chunk_size`` by ``N``
+        cross-covariance with ``N`` training points, does not grow with the
+        size of the grid. The last chunk is padded to ``chunk_size``, so
+        ``predict_fn`` is compiled once, with ``jax.jit``.
 
-        If ``obj`` holds Dask arrays, the result is lazy: each Dask block is
-        predicted when it is computed, for example by ``.compute()`` or
-        ``to_netcdf``. Chunk ``obj`` along the grid's dims to control the size
-        of a block.
+        If ``obj`` holds no Dask arrays, the inputs and the result of every cell
+        are in memory at the same time. If ``obj`` holds Dask arrays, the result
+        is lazy: each Dask block is predicted when it is computed, for example
+        by ``.compute()`` or ``to_netcdf``, and only the cells of that block are
+        in memory. The blocks follow the Dask chunks of ``obj`` along the grid's
+        dims. This is also true when the inputs are index coordinates, which are
+        never Dask arrays. Chunk ``obj``, for example with
+        ``obj.chunk({"lat": 10})``, to control the size of a block.
 
         Args:
             predict_fn: Maps ``(M, D)`` inputs to a distribution with ``mean``
@@ -371,6 +377,17 @@ class GridSpec:
             raise ValueError(f"chunk_size must be positive, not {chunk_size}")
         dataset, variables, dims = self._grid_of(obj)
         grid_inputs = [var.transpose(*dims) for var in xr.broadcast(*variables)]
+        chunks = _dask_chunks(dataset)
+        if chunks:
+            # An input that is not a Dask array (always the case for an index
+            # coordinate) gets the chunks of `obj`. Otherwise `apply_ufunc` sees
+            # only NumPy inputs and predicts the whole grid now.
+            grid_inputs = [
+                var
+                if var.chunks is not None
+                else var.chunk({dim: chunks.get(dim, -1) for dim in dims})
+                for var in grid_inputs
+            ]
         moments = jax.jit(lambda inputs: _moments(predict_fn(inputs)))
 
         def predict_block(*blocks: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -699,6 +716,19 @@ def _resolve(dataset: xr.Dataset, names: tp.Sequence[str]) -> list[xr.DataArray]
             f"{sorted(map(str, dataset.variables))}"
         )
     return [dataset[name] for name in names]
+
+
+def _dask_chunks(dataset: xr.Dataset) -> dict[tp.Hashable, tuple[int, ...]]:
+    r"""The Dask chunk sizes of each dim of ``dataset``; empty without Dask.
+
+    A dim takes the chunks of the first Dask array that has it.
+    """
+    chunks: dict[tp.Hashable, tuple[int, ...]] = {}
+    for variable in dataset.variables.values():
+        if variable.chunks is not None:
+            for dim, sizes in zip(variable.dims, variable.chunks, strict=True):
+                chunks.setdefault(dim, sizes)
+    return chunks
 
 
 def _grid_coords(

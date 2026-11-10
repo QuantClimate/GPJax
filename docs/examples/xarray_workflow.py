@@ -193,9 +193,9 @@ model, history = gpx.fit_scipy(
 # variance of each cell.
 #
 # `spec.predict` sends the cells to this function in chunks of `chunk_size`, so
-# the memory use stays the same for a global grid. If the grid holds Dask
-# arrays, the result is lazy, and each Dask block is predicted only when it is
-# computed or written with `to_netcdf`.
+# the memory that the model uses stays the same for a global grid. If the grid
+# holds Dask arrays, the result is lazy, and each Dask block is predicted only
+# when it is computed or written with `to_netcdf`.
 
 # %%
 fine = regional_field(np.linspace(40.0, 54.0, 45), np.linspace(2.0, 22.0, 61))

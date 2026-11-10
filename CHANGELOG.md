@@ -19,9 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point on a circle. `GridSpec.columns` names the resulting columns.
 - **`GridSpec.predict`: chunked prediction on large grids.**
   `spec.predict(lambda x: posterior(x, covariance="diagonal"), grid)` gives the
-  predictive mean and variance as an `xr.Dataset`, with at most `chunk_size`
-  cells in memory at once and one compilation. A Dask-backed grid gives a lazy
-  result that is predicted block by block.
+  predictive mean and variance as an `xr.Dataset`. The model gets at most
+  `chunk_size` cells at a time and is compiled once. If the grid holds Dask
+  arrays, the result is lazy and is predicted block by block, along the Dask
+  chunks of the grid.
 - **New example: *Infilling Global Surface Temperature*.** It reads a netCDF
   file of the 2024 temperature anomaly from the NCEP-NCAR Reanalysis 1, which is
   complete, and removes cells to test the infill against the truth. Cells removed
