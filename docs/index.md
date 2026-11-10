@@ -152,6 +152,7 @@ examples/intro_to_kernels
 examples/regression
 examples/classification
 examples/poisson
+examples/xarray_workflow
 examples/natural_gradients
 ```
 
@@ -176,11 +177,11 @@ examples/oilmm
 examples/barycentres
 examples/graph_kernels
 examples/heteroscedastic_inference
+examples/infilling_surface_temperature
 examples/multioutput
 examples/oak
 examples/oceanmodelling
 examples/spatial_linear_gp
-examples/xarray_workflow
 examples/yacht
 ```
 
