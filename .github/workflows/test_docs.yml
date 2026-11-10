@@ -6,11 +6,9 @@ on:
   pull_request:
 
 # No `pages: write` / `id-token: write`: this workflow must never be able to
-# touch GitHub Pages. See the artifact step below. `pull-requests: write` is
-# only so the Netlify preview URL can be posted as a sticky comment.
+# touch GitHub Pages. See the artifact step below.
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -23,11 +21,6 @@ jobs:
     name: Build docs
     timeout-minutes: 45
     runs-on: ubuntu-latest
-    # Job-level so the preview step's own `if` can test them: a step cannot see
-    # env vars it declares itself.
-    env:
-      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
     steps:
       - name: Check out the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,12 +28,12 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "latest"
           enable-cache: true
@@ -129,34 +122,3 @@ jobs:
           name: docs-smoke-render
           path: docs/_build/html
           retention-days: 7
-
-      - name: Deploy Netlify preview
-        # DIVERGENCE from impulso, which ships no PR preview at all. A branch
-        # deploy on the same Netlify site that serves production: `--alias` puts
-        # it at pr-<n>--<site>.netlify.app and, without `--prod`, cannot touch
-        # the production deploy. Never add `--prod` to this step.
-        #
-        # Skipped on forks and until the secrets exist, so the gate above stays
-        # green either way — a missing preview must not fail the docs build.
-        id: netlify
-        if: >-
-          github.event.pull_request.head.repo.full_name == github.repository
-          && env.NETLIFY_AUTH_TOKEN != ''
-        run: |
-          npx --yes netlify-cli@latest deploy \
-            --dir=docs/_build/html \
-            --alias="pr-${{ github.event.number }}" \
-            --message="PR #${{ github.event.number }} smoke render" \
-            --json > netlify-deploy.json
-          echo "url=$(jq -r '.deploy_url' netlify-deploy.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Comment the preview URL on the PR
-        if: steps.netlify.outputs.url != ''
-        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
-        with:
-          header: docs-preview
-          message: |
-            📖 **Docs preview:** ${{ steps.netlify.outputs.url }}
-
-            Smoke render — the expensive notebooks run with reduced budgets, so
-            figures are not publication fidelity. `/render-mode.txt` says `smoke`.

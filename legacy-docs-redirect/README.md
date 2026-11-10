@@ -24,8 +24,9 @@ paper, the PyPI project page, search results, and any third-party citation.
 > Confirm before deploying — `netlify sites:list`, then check which site claims
 > the `docs.` subdomain under Domain management.
 
-The docs site is the same one this repo already uses for PR previews, i.e. the
-site behind the `NETLIFY_SITE_ID` repository secret.
+That is the site named `endearing-crepe-c2d5fe`. It also hosted this repo's PR
+previews (`pr-<n>--endearing-crepe-c2d5fe.netlify.app`) until CI stopped
+deploying to Netlify.
 
 ```bash
 npx --yes netlify-cli@latest deploy \
@@ -35,13 +36,9 @@ npx --yes netlify-cli@latest deploy \
   --message="301 legacy docs host to gpjax.quantclimate.com"
 ```
 
-`--prod` is correct **here** and only here: this is a deliberate, manual
-replacement of that site's production deploy. It must never appear in
-`.github/workflows/test_docs.yml`, whose preview step uses `--alias` so a pull
-request can never overwrite a production deploy.
-
-Deploying this does not affect PR previews. Those are alias deploys at
-`pr-<n>--<site>.netlify.app` and are independent of the production deploy.
+`--prod` is correct **here**: this is a deliberate, manual replacement of that
+site's production deploy. No workflow deploys to Netlify, and none should: a CI
+deploy with `--prod` would overwrite the redirect.
 
 ## Verifying
 
