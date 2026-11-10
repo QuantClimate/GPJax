@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-10
+
 ### Added
 
 - **`gpjax.xarray` input transforms.** `from_xarray(..., transforms=[...])`
@@ -521,6 +523,7 @@ instructions.
 - Added: `equinox>=0.11`, `paramax>=0.0.5`, `lineax`.
 - Removed: `flax`, `cola-ml`.
 
+[1.1.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.1.0
 [1.0.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.0.0
 [0.18.0]: https://github.com/QuantClimate/GPJax/releases/tag/v0.18.0
 [0.16.0]: https://github.com/QuantClimate/GPJax/releases/tag/v0.16.0

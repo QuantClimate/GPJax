@@ -8,6 +8,20 @@ Releases not listed here made no breaking changes; see the
 [changelog](gh:blob/main/CHANGELOG.md) for
 the full history.
 
+## 1.0.x → 1.1.0
+
+GPJax `1.1` adds features and fixes. One change can affect existing code: the
+`power` of `PoweredExponential` is now constrained to $(0, 2]$, the interval
+where the kernel is positive definite.
+
+- A `power` outside $(0, 2]$ now raises `ValueError`. Before, it was accepted
+  and gave a Gram matrix that was not positive definite.
+- A float `power` in $(0, 2)$ is now a trainable `SigmoidBounded` parameter, so
+  `fit` learns it. Before, it was a plain float that `fit` did not change. To
+  keep the power fixed, pass `paramax.non_trainable(jnp.asarray(power))`.
+- `power=2.0` (the RBF case) stays fixed.
+- `kernel.power` is no longer a float. Read its value with `val(kernel.power)`.
+
 ## 0.18.x → 1.0.0
 
 GPJax `1.0` restructures the core API around **conditioning**: the joint
