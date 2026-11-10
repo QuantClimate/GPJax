@@ -5,6 +5,7 @@ from gpjax.linalg.custom_operators import BlockDiag, Kronecker
 import jax
 import jax.numpy as jnp
 import lineax as lx
+import numpy as np
 import pytest
 
 # --- cholesky_factor tests ---
@@ -206,6 +207,49 @@ def test_block_diag_mv():
     result = bd.mv(x)
     expected = jnp.array([1.0, 3.0, 10.0])
     assert jnp.allclose(result, expected)
+
+
+@pytest.mark.parametrize(
+    "block_shapes",
+    [((2, 2), (3, 3)), ((2, 3), (3, 2)), ((2, 3),), ((1, 2), (3, 1), (2, 4))],
+)
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+@pytest.mark.parametrize("use_jit", [False, True])
+def test_block_diag_mv_matches_dense_value_and_gradients(block_shapes, dtype, use_jit):
+    matrices = tuple(
+        jnp.arange(rows * cols, dtype=dtype).reshape(rows, cols) + index + 1
+        for index, (rows, cols) in enumerate(block_shapes)
+    )
+    x = jnp.arange(sum(cols for _, cols in block_shapes), dtype=dtype) + 0.5
+    weights = jnp.arange(sum(rows for rows, _ in block_shapes), dtype=dtype) + 1
+
+    def apply(blocks, vector):
+        operator = BlockDiag(tuple(lx.MatrixLinearOperator(block) for block in blocks))
+        return operator.mv(vector)
+
+    def loss(blocks, vector):
+        return jnp.dot(weights, apply(blocks, vector))
+
+    def reference_loss(blocks, vector):
+        return jnp.dot(weights, jax.scipy.linalg.block_diag(*blocks) @ vector)
+
+    evaluate = jax.jit(apply) if use_jit else apply
+    result = evaluate(matrices, x)
+    expected = jax.scipy.linalg.block_diag(*matrices) @ x
+    assert result.shape == expected.shape
+    np.testing.assert_allclose(result, expected, rtol=1e-6, atol=1e-6)
+
+    differentiate = jax.grad(loss, argnums=(0, 1))
+    if use_jit:
+        differentiate = jax.jit(differentiate)
+    actual_gradients = differentiate(matrices, x)
+    expected_gradients = jax.grad(reference_loss, argnums=(0, 1))(matrices, x)
+    for actual, expected in zip(
+        jax.tree.leaves(actual_gradients),
+        jax.tree.leaves(expected_gradients),
+        strict=True,
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-6)
 
 
 def test_block_diag_as_matrix():
