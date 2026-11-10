@@ -53,3 +53,31 @@ def test_stable_scaled_ive_gradient_is_finite(c):
     grad_fn = jax.jacobian(lambda c_: _stable_scaled_ive(c_, 8))
     grads = np.asarray(grad_fn(c))
     assert np.all(np.isfinite(grads)), f"Non-finite gradient at c={c}: {grads}"
+
+
+@pytest.mark.parametrize(
+    ("c", "truncation_order"), [(1e-3, 25), (1e-5, 12), (1e-6, 10), (3e-8, 25)]
+)
+def test_stable_scaled_ive_small_c_high_order_does_not_overflow(c, truncation_order):
+    # The unnormalised Miller values grow like (2 k_max / c)^k_max and used to
+    # overflow here, so every output was zero or NaN.
+    out = np.asarray(_stable_scaled_ive(c, truncation_order))
+    expected = scipy.special.ive(np.arange(truncation_order + 1), c)
+    np.testing.assert_allclose(out, expected, atol=1e-12, rtol=1e-10)
+    grads = np.asarray(
+        jax.jacobian(lambda c_: _stable_scaled_ive(c_, truncation_order))(
+            jnp.asarray(c)
+        )
+    )
+    assert np.all(np.isfinite(grads))
+
+
+@pytest.mark.parametrize("c", [1e-3, 0.25, 1.0, 4.0])
+@pytest.mark.parametrize("truncation_order", [6, 20])
+def test_stable_scaled_ive_float32(c, truncation_order):
+    # In single precision the overflow happened already for the default
+    # TruncatedPeriodic (lengthscale=1, truncation_order=6, so c = 0.25).
+    out = np.asarray(_stable_scaled_ive(jnp.asarray(c, jnp.float32), truncation_order))
+    assert out.dtype == np.float32
+    expected = scipy.special.ive(np.arange(truncation_order + 1), c)
+    np.testing.assert_allclose(out, expected, atol=1e-7, rtol=1e-4)
