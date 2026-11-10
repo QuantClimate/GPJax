@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   train. `power=2.0` (the RBF case) stays fixed, and a value outside the
   interval raises `ValueError`. The type of the `power` leaf changes, so code
   that reads it should use `val(kernel.power)`.
+- Split `BlockDiag` input vectors with static input block sizes, so matrix-vector
+  products work under JIT and with rectangular blocks.
 
 ### Changed
 
