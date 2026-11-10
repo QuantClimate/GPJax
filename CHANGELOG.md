@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   products work under JIT and with rectangular blocks.
 - Read the observation count from `y` for unsupervised `Dataset` objects, so
   `n` and `full_size` work when `X` is absent.
+- Apply the Gaussian covariance transform to each sample for multidimensional
+  `GaussianDistribution.sample` shapes, including shapes with empty axes.
 
 ### Changed
 
