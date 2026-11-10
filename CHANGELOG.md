@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TruncatedPeriodic` and its state-space SDE no longer return zeros or
+  NaNs for small Bessel arguments.** The Miller downward recurrence in
+  `_stable_scaled_ive` formed unnormalised values that grow like
+  $(2k_{\max}/c)^{k_{\max}}$, with $c = 1/(4\ell^2)$. These overflowed in
+  float64 for a large lengthscale and a high truncation order (for example
+  $\ell > 12$ with `truncation_order=25`), and in float32 already for the
+  default kernel (`lengthscale=1.0`, `truncation_order=6`), whose Gram matrix
+  was all NaN. The recurrence now runs on the ratios $I_k / I_{k-1}$, which stay
+  in $(0, 1)$.
 - **`PoweredExponential.power` is now constrained to $(0, 2]$
   ([#813](https://github.com/QuantClimate/GPJax/issues/813)).** The kernel is
   positive definite in every dimension only in this interval, but any value was
@@ -22,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that reads it should use `val(kernel.power)`.
 - Split `BlockDiag` input vectors with static input block sizes, so matrix-vector
   products work under JIT and with rectangular blocks.
+- Read the observation count from `y` for unsupervised `Dataset` objects, so
+  `n` and `full_size` work when `X` is absent.
+- Apply the Gaussian covariance transform to each sample for multidimensional
+  `GaussianDistribution.sample` shapes, including shapes with empty axes.
 
 ### Changed
 
