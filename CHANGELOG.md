@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `return_period_samples` give posterior samples; `gev_return_level`,
   `gev_return_period` and `GridSpec.scatter` give levels and labelled maps.
 
+### Fixed
+
+- **Likelihoods with equal integrators are now equal pytrees.** An integrator
+  compares by its type and its settings. Before, two likelihoods that were built
+  with the same explicit integrator, for example `GHQuadratureIntegrator(10)`,
+  were different pytrees: `jax.vmap` could not stack them, and a jit-compiled
+  function compiled again for each one.
+
 ## [1.1.0] — 2026-11-10
 
 ### Added

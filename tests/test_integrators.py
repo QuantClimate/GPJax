@@ -14,10 +14,16 @@
 # ==============================================================================
 
 
-from gpjax.integrators import GHQuadratureIntegrator
+import equinox as eqx
+from gpjax.integrators import (
+    AnalyticalGaussianIntegrator,
+    GHQuadratureIntegrator,
+)
 from gpjax.likelihoods import (
+    GEV,
     Bernoulli,
     Gaussian,
+    HeteroscedasticGEV,
 )
 import jax
 from jax import config
@@ -93,3 +99,47 @@ def test_bernoulli_quadrature(jit: bool, params: tuple[float, float]):
     else:
         ell = likelihood.expected_log_likelihood(y=y, mean=mu, variance=variance)
     np.testing.assert_almost_equal(ell, expected)
+
+
+def test_integrators_compare_by_type_and_settings():
+    assert GHQuadratureIntegrator(10) == GHQuadratureIntegrator(10)
+    assert hash(GHQuadratureIntegrator(10)) == hash(GHQuadratureIntegrator(10))
+    assert GHQuadratureIntegrator(10) != GHQuadratureIntegrator(20)
+    assert GHQuadratureIntegrator() != AnalyticalGaussianIntegrator()
+    assert AnalyticalGaussianIntegrator() == AnalyticalGaussianIntegrator()
+    assert GHQuadratureIntegrator(10) != 10
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: HeteroscedasticGEV(shape=0.1, num_points=3),
+        lambda: GEV(integrator=GHQuadratureIntegrator(10)),
+        lambda: Bernoulli(integrator=GHQuadratureIntegrator(10)),
+    ],
+)
+def test_likelihoods_with_equal_integrators_are_equal_pytrees(build):
+    # Regression: the integrator is a static field. Without value equality, two
+    # likelihoods built with the same arguments were different pytrees, so they
+    # could not be stacked and a jit-compiled function compiled again.
+    first, second = build(), build()
+    assert jax.tree_util.tree_structure(first) == jax.tree_util.tree_structure(second)
+    stacked = jax.tree_util.tree_map(lambda a, b: jnp.stack([a, b]), first, second)
+    assert jax.tree_util.tree_structure(stacked) == jax.tree_util.tree_structure(first)
+
+    traces = []
+
+    @eqx.filter_jit
+    def count(likelihood):
+        traces.append(1)
+        return jnp.zeros(())
+
+    count(first)
+    count(second)
+    assert len(traces) == 1
+
+
+def test_likelihoods_with_different_integrators_are_different_pytrees():
+    coarse = HeteroscedasticGEV(shape=0.1, num_points=3)
+    fine = HeteroscedasticGEV(shape=0.1, num_points=20)
+    assert jax.tree_util.tree_structure(coarse) != jax.tree_util.tree_structure(fine)
