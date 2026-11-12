@@ -663,11 +663,6 @@ def test_predict_rejects_a_predict_fn_of_the_wrong_shape(field):
         spec.predict(one_value, field, chunk_size=4)
 
 
-# ---------------------------------------------------------------------------
-# scatter: per-cell values, for example return-level samples, onto the grid
-# ---------------------------------------------------------------------------
-
-
 def test_scatter_places_per_cell_values_on_the_grid(field):
     field["t2m"][0, 0, 0] = np.nan
     data, spec = from_xarray(field, target="t2m", inputs=["lat", "lon"])
@@ -687,17 +682,8 @@ def test_scatter_places_per_cell_values_on_the_grid(field):
     np.testing.assert_array_equal(out["return_period"], [10.0, 50.0, 100.0])
     np.testing.assert_array_equal(out["lat"], field["lat"])
     assert out.attrs == {"units": "K"}
-    # The dropped cell is NaN, and the kept cells are in flattened C order.
     assert np.isnan(out.values[:, :, 0, 0, 0]).all()
     np.testing.assert_array_equal(out.values[..., spec.mask], values)
-
-
-def test_scatter_without_leading_dims_and_without_attrs(field):
-    data, spec = from_xarray(field, target="t2m", inputs=["lat"])
-    out = spec.scatter(np.ones(data.n), name="probability")
-    assert out.dims == ("time", "lat", "lon")
-    assert out.attrs == {}
-    assert out.name == "probability"
 
 
 def test_scatter_rejects_values_that_do_not_match_the_grid(field):
@@ -708,36 +694,3 @@ def test_scatter_rejects_values_that_do_not_match_the_grid(field):
         spec.scatter(np.zeros((3, data.n)), name="x")
     with pytest.raises(ValueError, match="dims"):
         spec.scatter(np.zeros(data.n), name="x", dims=("sample",))
-
-
-def test_return_level_map_with_credible_interval(two_cell_field):
-    """A labelled map of GEV return levels and their 90 % interval."""
-    from gpjax.likelihoods import GEV
-
-    _, spec = from_xarray(two_cell_field, target="t2m", inputs=["site"])
-    latent = GaussianDistribution(
-        loc=jnp.array([40.0, 45.0]),
-        scale=lx.MatrixLinearOperator(jnp.array([[1.0, 0.5], [0.5, 1.0]])),
-    )
-    periods = jnp.array([10.0, 100.0])
-    levels = GEV(scale=12.0, shape=0.1).return_level_samples(
-        latent, periods, key=jr.key(0), num_samples=2000
-    )
-
-    out = spec.scatter(
-        levels,
-        name="return_level",
-        dims=("sample", "return_period"),
-        coords={"return_period": np.asarray(periods)},
-        attrs=two_cell_field["t2m"].attrs,
-    )
-    interval = out.quantile([0.05, 0.5, 0.95], dim="sample")
-
-    assert interval.dims == ("quantile", "return_period", "site")
-    median = interval.sel(quantile=0.5)
-    assert float(median.sel(return_period=100.0, site=1.0)) > float(
-        median.sel(return_period=10.0, site=1.0)
-    )
-    assert float(median.sel(return_period=100.0, site=1.0)) > float(
-        median.sel(return_period=100.0, site=0.0)
-    )

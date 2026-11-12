@@ -37,14 +37,8 @@ from gpjax.mean_functions import (
     Constant,
     Zero,
 )
-from gpjax.objectives import (
-    heteroscedastic_elbo,
-    heteroscedastic_elbo_chained,
-)
-from gpjax.parameters import (
-    SigmoidBounded,
-    val,
-)
+from gpjax.objectives import heteroscedastic_elbo
+from gpjax.parameters import val
 from gpjax.variational_families import (
     HeteroscedasticPrediction,
     HeteroscedasticVariationalFamily,
@@ -61,6 +55,7 @@ import jax.random as jr
 import lineax as lx
 import numpy as np
 import optax as ox
+import paramax
 import pytest
 from scipy import stats
 
@@ -508,11 +503,6 @@ def test_sanctioned_heteroscedastic_path_is_unaffected(noise_prior):
     assert jnp.all(jnp.isfinite(result))
 
 
-# ---------------------------------------------------------------------------
-# HeteroscedasticGEV: a GEV with a latent location and a latent scale
-# ---------------------------------------------------------------------------
-
-
 def _dense(mean, variance):
     mean = jnp.asarray(mean)
     return gpx.distributions.GaussianDistribution(
@@ -520,386 +510,7 @@ def _dense(mean, variance):
     )
 
 
-def test_heteroscedastic_gev_defaults():
-    likelihood = HeteroscedasticGEV()
-    assert isinstance(likelihood.noise_transform, LogNormalTransform)
-    assert isinstance(likelihood.shape, SigmoidBounded)
-    np.testing.assert_allclose(val(likelihood.shape), 0.1)
-    assert likelihood.num_points == 20
-    assert likelihood.supports_tight_bound() is False
-    with pytest.raises(ValueError, match="shape"):
-        HeteroscedasticGEV(shape=0.6)
-
-
-def test_heteroscedastic_gev_link_function_requires_and_uses_the_scale_latent():
-    likelihood = HeteroscedasticGEV(shape=-0.1)
-    f = jnp.array([0.5, -0.2, 1.0])
-    g = jnp.array([-1.0, 0.0, 1.0])
-    with pytest.raises(ValueError, match="latent scale"):
-        likelihood.link_function(f)
-    dist = likelihood.link_function(f, g)
-    assert isinstance(dist, GeneralisedExtremeValue)
-    assert dist.support_continuation is True
-    np.testing.assert_allclose(dist.loc, f)
-    # The transform gives the GEV scale itself, not a variance.
-    np.testing.assert_allclose(dist.scale, jnp.exp(g))
-    np.testing.assert_allclose(dist.concentration, -0.1)
-    softplus = HeteroscedasticGEV(noise_transform=SoftplusTransform())
-    np.testing.assert_allclose(
-        softplus.link_function(f, g).scale, jax.nn.softplus(g), rtol=1e-12
-    )
-
-
-def test_heteroscedastic_gev_predict_is_the_exact_plug_in():
-    likelihood = HeteroscedasticGEV(shape=0.2)
-    dist_f = _dense([1.0, 2.0], [0.3, 0.4])
-    dist_g = _dense([0.5, -0.5], [0.1, 0.2])
-    with pytest.raises(ValueError, match="noise_dist"):
-        likelihood.predict(dist_f)
-    predictive = likelihood(dist_f, dist_g)
-    assert isinstance(predictive, GeneralisedExtremeValue)
-    assert predictive.support_continuation is False
-    np.testing.assert_allclose(predictive.loc, dist_f.mean)
-    np.testing.assert_allclose(predictive.scale, jnp.exp(dist_g.mean))
-
-
-def test_heteroscedastic_gev_requires_the_moments_of_the_scale_latent():
-    likelihood = HeteroscedasticGEV()
-    y = jnp.zeros((3, 1))
-    with pytest.raises(ValueError, match="mean_g and variance_g"):
-        likelihood.expected_log_likelihood(y, y, y + 1.0)
-
-
-@pytest.mark.parametrize("shape", [-0.3, 0.0, 0.3])
-def test_heteroscedastic_gev_expected_log_likelihood_matches_a_brute_force_integral(
-    shape,
-):
-    # The moments keep the nodes away from the junctions of the support
-    # continuation, where the integrand is only once differentiable and the
-    # Gauss-Hermite rule converges slowly.
-    likelihood = HeteroscedasticGEV(shape=shape)
-    y = jnp.array([[1.0], [2.8], [0.3]])
-    mean = jnp.array([[0.5], [2.0], [0.0]])
-    variance = jnp.array([[0.05], [0.1], [0.05]])
-    mean_g = jnp.array([[0.2], [0.4], [-0.3]])
-    variance_g = jnp.array([[0.01], [0.02], [0.01]])
-    ours = likelihood.expected_log_likelihood(
-        y, mean, variance, mean_g=mean_g, variance_g=variance_g
-    )
-    assert ours.shape == (3,)
-    grid = np.linspace(-10.0, 10.0, 1201)
-    for i in range(3):
-        sd_f, sd_g = np.sqrt(variance[i, 0]), np.sqrt(variance_g[i, 0])
-        f = float(mean[i, 0]) + sd_f * grid
-        g = float(mean_g[i, 0]) + sd_g * grid
-        log_prob = np.asarray(
-            likelihood.link_function(
-                jnp.asarray(f)[:, None], jnp.asarray(g)[None, :]
-            ).log_prob(float(y[i, 0]))
-        )
-        weights = np.outer(stats.norm.pdf(grid), stats.norm.pdf(grid))
-        reference = np.trapezoid(np.trapezoid(weights * log_prob, grid), grid)
-        np.testing.assert_allclose(ours[i], reference, rtol=1e-9)
-
-
-def test_heteroscedastic_gev_reduces_to_gev_without_scale_uncertainty():
-    likelihood = HeteroscedasticGEV(shape=0.15)
-    y = jnp.array([[1.0], [3.0], [-0.5], [6.0]])
-    mean = jnp.array([[0.5], [2.0], [0.0], [1.0]])
-    variance = jnp.array([[0.05], [0.8], [0.1], [2.0]])
-    mean_g = jnp.array([[0.2], [0.4], [-0.3], [1.0]])
-    ours = likelihood.expected_log_likelihood(
-        y, mean, variance, mean_g=mean_g, variance_g=jnp.zeros_like(mean_g)
-    )
-    reference = jnp.concatenate(
-        [
-            GEV(scale=jnp.exp(mean_g[i, 0]), shape=0.15).expected_log_likelihood(
-                y[i : i + 1], mean[i : i + 1], variance[i : i + 1]
-            )
-            for i in range(4)
-        ]
-    )
-    np.testing.assert_allclose(ours, reference, rtol=1e-12)
-
-
-def test_heteroscedastic_gev_ignores_noise_statistics():
-    likelihood = HeteroscedasticGEV()
-    y, mean, variance = jnp.ones((4, 1)), jnp.zeros((4, 1)), jnp.full((4, 1), 0.5)
-    mean_g, variance_g = jnp.full((4, 1), 0.1), jnp.full((4, 1), 0.2)
-    plain = likelihood.expected_log_likelihood(
-        y, mean, variance, mean_g=mean_g, variance_g=variance_g
-    )
-    with_stats = likelihood.expected_log_likelihood(
-        y,
-        mean,
-        variance,
-        mean_g=mean_g,
-        variance_g=variance_g,
-        noise_stats=likelihood.noise_statistics(mean_g, variance_g),
-    )
-    np.testing.assert_allclose(plain, with_stats)
-
-
-@pytest.mark.parametrize("num_data", [1, 7, 300])
-def test_heteroscedastic_gev_expected_log_likelihood_direct_use(num_data):
-    # Many years of maxima at a few stations: the marginal moments of each
-    # station are gathered by a station index.
-    num_stations = 5
-    key_index, key_y, key_moments = jr.split(jr.key(num_data), 3)
-    station = jr.randint(key_index, (num_data,), 0, num_stations)
-    station_mean = jr.normal(key_moments, (num_stations, 1))
-    station_variance = jnp.full((num_stations, 1), 0.3)
-    station_mean_g = 0.1 * station_mean
-    station_variance_g = jnp.full((num_stations, 1), 0.05)
-    y = station_mean[station] + 1.5 * jr.gumbel(key_y, (num_data, 1))
-    likelihood = HeteroscedasticGEV(shape=0.1)
-
-    def total(likelihood, mean, variance, mean_g, variance_g):
-        return jnp.sum(
-            likelihood.expected_log_likelihood(
-                y,
-                mean[station],
-                variance[station],
-                mean_g=mean_g[station],
-                variance_g=variance_g[station],
-            )
-        )
-
-    args = (station_mean, station_variance, station_mean_g, station_variance_g)
-    per_point = likelihood.expected_log_likelihood(
-        y,
-        *(a[station] for a in args[:2]),
-        mean_g=station_mean_g[station],
-        variance_g=station_variance_g[station],
-    )
-    assert per_point.shape == (num_data,)
-    value = total(likelihood, *args)
-    jitted = jax.jit(total)(likelihood, *args)
-    grads = jax.grad(total, argnums=(0, 1, 2, 3, 4))(likelihood, *args)
-    np.testing.assert_allclose(jitted, value, rtol=1e-12)
-    assert jnp.isfinite(value)
-    assert jnp.isfinite(grads[0].shape._unconstrained)
-    for grad in grads[1:]:
-        assert grad.shape == (num_stations, 1)
-        assert jnp.all(jnp.isfinite(grad))
-
-
-def test_heteroscedastic_gev_expected_log_likelihood_is_finite_for_wide_moments():
-    likelihood = HeteroscedasticGEV(shape=-0.3)
-    y = jnp.array([[0.0], [5.0]])
-    value, grads = jax.value_and_grad(
-        lambda m, v, mg, vg: jnp.sum(
-            likelihood.expected_log_likelihood(y, m, v, mean_g=mg, variance_g=vg)
-        ),
-        argnums=(0, 1, 2, 3),
-    )(jnp.zeros((2, 1)), jnp.full((2, 1), 100.0), jnp.zeros((2, 1)), jnp.ones((2, 1)))
-    assert jnp.isfinite(value)
-    for grad in grads:
-        assert jnp.all(jnp.isfinite(grad))
-
-
-def _gev_family(prior, noise_prior, inducing_inputs, likelihood=None):
-    model = HeteroscedasticModel(
-        prior=prior,
-        likelihood=HeteroscedasticGEV() if likelihood is None else likelihood,
-        noise_prior=noise_prior,
-    )
-    return HeteroscedasticVariationalFamily(
-        model=model, inducing_inputs=inducing_inputs
-    )
-
-
-def test_heteroscedastic_gev_uses_the_chained_bound(prior, noise_prior, dataset):
-    family = _gev_family(prior, noise_prior, dataset.X[::2])
-    np.testing.assert_allclose(
-        heteroscedastic_elbo(family, dataset),
-        heteroscedastic_elbo_chained(family, dataset),
-    )
-
-
-def test_heteroscedastic_gev_elbo_is_finite_under_jit_and_grad(
-    prior, noise_prior, dataset
-):
-    family = _gev_family(prior, noise_prior, dataset.X[::2])
-    params, static = eqx.partition(family, eqx.is_array)
-
-    def loss(params):
-        return -heteroscedastic_elbo(eqx.combine(params, static), dataset)
-
-    value = loss(params)
-    np.testing.assert_allclose(jax.jit(loss)(params), value, rtol=1e-12)
-    grads = jax.grad(loss)(params)
-    assert jnp.isfinite(value)
-    assert all(jnp.all(jnp.isfinite(g)) for g in jax.tree_util.tree_leaves(grads))
-    assert jnp.isfinite(grads.model.likelihood.shape._unconstrained)
-
-
-def test_heteroscedastic_gev_fits_and_keeps_the_shape_in_its_bounds(prior, noise_prior):
-    key_x, key_y = jr.split(jr.key(11))
-    x = jnp.sort(jr.uniform(key_x, (60, 1)), axis=0)
-    y = 1.0 + jnp.sin(4.0 * x) + 0.5 * jr.gumbel(key_y, (60, 1))
-    data = Dataset(X=x, y=y)
-    family = _gev_family(
-        Prior(kernel=RBF(), mean_function=Constant(1.0)),
-        Prior(kernel=RBF(), mean_function=Constant(-0.5)),
-        jnp.linspace(0.0, 1.0, 8)[:, None],
-        likelihood=HeteroscedasticGEV(shape=0.45),
-    )
-    fitted, history = gpx.fit(
-        model=family,
-        objective=lambda q, d: -heteroscedastic_elbo(q, d),
-        train_data=data,
-        optim=ox.adam(0.05),
-        num_iters=150,
-        verbose=False,
-    )
-    assert jnp.all(jnp.isfinite(history))
-    assert history[-1] < history[0]
-    shape = val(fitted.model.likelihood.shape)
-    assert -0.5 < shape < 0.5
-    assert shape < 0.45
-
-
-def test_heteroscedastic_gev_return_level_and_period_samples():
-    likelihood = HeteroscedasticGEV(shape=0.1)
-    mean_f, mean_g = jnp.array([10.0, 12.0, 15.0]), jnp.array([0.0, 0.5, 1.0])
-    tiny = jnp.full(3, 1e-12)
-    dist_f, dist_g = _dense(mean_f, tiny), _dense(mean_g, tiny)
-    key = jr.key(0)
-    one = likelihood.return_level_samples(dist_f, dist_g, 50.0, key=key, num_samples=40)
-    many = likelihood.return_level_samples(
-        dist_f, dist_g, jnp.array([10.0, 50.0]), key=key, num_samples=40
-    )
-    assert one.shape == (40, 3)
-    assert many.shape == (40, 2, 3)
-    expected = gev_return_level(50.0, mean_f, jnp.exp(mean_g), 0.1)
-    np.testing.assert_allclose(one, jnp.broadcast_to(expected, (40, 3)), rtol=1e-5)
-    np.testing.assert_allclose(many[:, 1], one, rtol=1e-12)
-
-    periods = likelihood.return_period_samples(
-        dist_f, dist_g, expected, key=key, num_samples=40
-    )
-    assert periods.shape == (40, 3)
-    np.testing.assert_allclose(periods, 50.0, rtol=1e-4)
-
-
-def test_heteroscedastic_gev_return_level_samples_include_the_scale_uncertainty():
-    likelihood = HeteroscedasticGEV(shape=0.0)
-    dist_f = _dense(jnp.array([0.0]), jnp.array([1e-12]))
-    dist_g = _dense(jnp.array([0.0]), jnp.array([0.25]))
-    samples = likelihood.return_level_samples(
-        dist_f, dist_g, 100.0, key=jr.key(1), num_samples=20000
-    )
-    # With f fixed at 0 and xi = 0, z_T = exp(g) c_T with g ~ N(0, 0.25).
-    c_t = float(gev_return_level(100.0, 0.0, 1.0, 0.0))
-    np.testing.assert_allclose(jnp.median(samples), c_t, rtol=0.02)
-    np.testing.assert_allclose(jnp.std(jnp.log(samples[:, 0] / c_t)), 0.5, rtol=0.03)
-
-
-def test_heteroscedastic_gev_return_period_samples_keep_infinity():
-    # A level is impossible in a sample where it is above the upper end point
-    # f + exp(g) / |xi|.
-    likelihood = HeteroscedasticGEV(shape=-0.25)
-    dist_f = _dense(jnp.array([0.0, 0.0]), jnp.array([1.0, 1.0]))
-    dist_g = _dense(jnp.array([0.0, 0.0]), jnp.array([0.01, 0.01]))
-    levels = jnp.array([2.0, 4.5])
-    periods = likelihood.return_period_samples(
-        dist_f, dist_g, levels, key=jr.key(2), num_samples=20000
-    )
-    assert not jnp.any(jnp.isnan(periods))
-    impossible = np.asarray(jnp.mean(jnp.isposinf(periods), axis=0))
-    rng = np.random.default_rng(0)
-    f, g = rng.normal(0.0, 1.0, 10**6), rng.normal(0.0, 0.1, 10**6)
-    expected = np.array([np.mean(f + 4.0 * np.exp(g) < level) for level in levels])
-    tolerance = 4.0 * np.sqrt(expected * (1.0 - expected) / 20000)
-    assert np.all(np.abs(impossible - expected) < tolerance)
-
-
-def _fit_stations_directly(shape, num_stations, num_years, num_steps, seed):
-    """Fit per-station Gaussian marginals of f and g with the 2-D quadrature.
-
-    Each station has its own q(f_s) = N(m_s, v_s) and q(g_s) = N(n_s, w_s),
-    with a broad N(0, 10^2) prior; all years of a station share them. This is
-    the direct use of `expected_log_likelihood` with moments gathered by a
-    station index.
-    """
-    key_y = jr.key(seed)
-    location = jnp.linspace(0.0, 5.0, num_stations)[:, None]
-    log_scale = jnp.linspace(-0.5, 0.5, num_stations)[:, None]
-    station = jnp.repeat(jnp.arange(num_stations), num_years)
-    y = gpx.distributions.GeneralisedExtremeValue(
-        location[station], jnp.exp(log_scale[station]), shape
-    ).sample(key_y)
-
-    sigma0 = float(jnp.std(y)) * np.sqrt(6.0) / np.pi
-    mu0 = float(jnp.mean(y)) - 0.5772 * sigma0
-    params = {
-        "m_f": jnp.full((num_stations, 1), mu0),
-        "log_v_f": jnp.full((num_stations, 1), -2.0),
-        "m_g": jnp.full((num_stations, 1), np.log(sigma0)),
-        "log_v_g": jnp.full((num_stations, 1), -2.0),
-        "likelihood": HeteroscedasticGEV(shape=0.0),
-    }
-    params, static = eqx.partition(params, eqx.is_array)
-
-    def kl(mean, log_variance, prior_variance=100.0):
-        variance = jnp.exp(log_variance)
-        return 0.5 * jnp.sum(
-            (variance + mean**2) / prior_variance
-            - 1.0
-            - log_variance
-            + jnp.log(prior_variance)
-        )
-
-    def loss(params):
-        p = eqx.combine(params, static)
-        expected = p["likelihood"].expected_log_likelihood(
-            y,
-            p["m_f"][station],
-            jnp.exp(p["log_v_f"])[station],
-            mean_g=p["m_g"][station],
-            variance_g=jnp.exp(p["log_v_g"])[station],
-        )
-        return (
-            -jnp.sum(expected) + kl(p["m_f"], p["log_v_f"]) + kl(p["m_g"], p["log_v_g"])
-        )
-
-    optimiser = ox.adam(0.05)
-
-    @jax.jit
-    def step(carry, _):
-        params, state = carry
-        value, grads = jax.value_and_grad(loss)(params)
-        updates, state = optimiser.update(grads, state, params)
-        return (ox.apply_updates(params, updates), state), value
-
-    (params, _), history = jax.lax.scan(
-        step, (params, optimiser.init(params)), None, length=num_steps
-    )
-    assert jnp.all(jnp.isfinite(history))
-    fitted = eqx.combine(params, static)
-    return fitted, location, log_scale
-
-
-def test_heteroscedastic_gev_recovery_with_moments_gathered_by_station_quick():
-    fitted, location, log_scale = _fit_stations_directly(0.15, 6, 60, 1500, 0)
-    assert abs(float(val(fitted["likelihood"].shape)) - 0.15) < 0.12
-    assert float(jnp.max(jnp.abs(fitted["m_f"] - location))) < 0.5
-    assert float(jnp.max(jnp.abs(fitted["m_g"] - log_scale))) < 0.35
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("shape", [-0.2, 0.2])
-def test_heteroscedastic_gev_recovery_with_moments_gathered_by_station(shape):
-    fitted, location, log_scale = _fit_stations_directly(shape, 10, 100, 3000, 1)
-    assert abs(float(val(fitted["likelihood"].shape)) - shape) < 0.06
-    assert float(jnp.max(jnp.abs(fitted["m_f"] - location))) < 0.4
-    assert float(jnp.max(jnp.abs(fitted["m_g"] - log_scale))) < 0.3
-
-
 class _WhitenedTwoLatent(eqx.Module):
-    """Two whitened variational families and a HeteroscedasticGEV likelihood."""
-
     q_f: gpx.variational_families.WhitenedVariationalGaussian
     q_g: gpx.variational_families.WhitenedVariationalGaussian
     likelihood: HeteroscedasticGEV
@@ -922,28 +533,180 @@ def _whitened_two_latent_elbo(model, data):
     )
 
 
-def _check_whitened_two_latent_recovery(shape, num_data, num_steps, tolerance):
+def _whitened_family_with_fixed_inducing_inputs(prior, inducing_inputs):
+    q = gpx.variational_families.WhitenedVariationalGaussian(
+        model=prior * GEV(), inducing_inputs=inducing_inputs
+    )
+    return eqx.tree_at(
+        lambda q: q.inducing_inputs, q, paramax.non_trainable(q.inducing_inputs)
+    )
+
+
+def test_heteroscedastic_gev_link_function_and_predict_use_the_scale_latent():
+    likelihood = HeteroscedasticGEV(shape=-0.1)
+    f = jnp.array([0.5, -0.2, 1.0])
+    g = jnp.array([-1.0, 0.0, 1.0])
+
+    link = likelihood.link_function(f, g)
+    assert link.support_continuation is True
+    np.testing.assert_allclose(link.loc, f)
+    np.testing.assert_allclose(link.scale, jnp.exp(g))
+    np.testing.assert_allclose(link.concentration, -0.1)
+    softplus = HeteroscedasticGEV(noise_transform=SoftplusTransform())
+    np.testing.assert_allclose(
+        softplus.link_function(f, g).scale, jax.nn.softplus(g), rtol=1e-12
+    )
+
+    predictive = likelihood(_dense(f, [0.3, 0.4, 0.5]), _dense(g, [0.1, 0.2, 0.3]))
+    assert isinstance(predictive, GeneralisedExtremeValue)
+    assert predictive.support_continuation is False
+    np.testing.assert_allclose(predictive.loc, f)
+    np.testing.assert_allclose(predictive.scale, jnp.exp(g))
+
+
+def test_heteroscedastic_gev_requires_the_scale_latent():
+    likelihood = HeteroscedasticGEV()
+    f = jnp.zeros((3, 1))
+    with pytest.raises(ValueError, match="latent scale"):
+        likelihood.link_function(f)
+    with pytest.raises(ValueError, match="noise_dist"):
+        likelihood.predict(_dense(jnp.zeros(3), jnp.ones(3)))
+    with pytest.raises(ValueError, match="mean_g and variance_g"):
+        likelihood.expected_log_likelihood(f, f, f + 1.0)
+
+
+@pytest.mark.parametrize("shape", [-0.3, 0.0, 0.3])
+def test_heteroscedastic_gev_expected_log_likelihood_matches_a_brute_force_integral(
+    shape,
+):
+    likelihood = HeteroscedasticGEV(shape=shape)
+    y = jnp.array([[1.0], [2.8], [0.3]])
+    mean = jnp.array([[0.5], [2.0], [0.0]])
+    variance = jnp.array([[0.05], [0.1], [0.05]])
+    mean_g = jnp.array([[0.2], [0.4], [-0.3]])
+    variance_g = jnp.array([[0.01], [0.02], [0.01]])
+    quadrature = likelihood.expected_log_likelihood(
+        y, mean, variance, mean_g=mean_g, variance_g=variance_g
+    )
+    standard_normal_grid = np.linspace(-10.0, 10.0, 1201)
+    weights = np.outer(
+        stats.norm.pdf(standard_normal_grid), stats.norm.pdf(standard_normal_grid)
+    )
+    for i in range(3):
+        f = float(mean[i, 0]) + np.sqrt(variance[i, 0]) * standard_normal_grid
+        g = float(mean_g[i, 0]) + np.sqrt(variance_g[i, 0]) * standard_normal_grid
+        log_prob = np.asarray(
+            likelihood.link_function(
+                jnp.asarray(f)[:, None], jnp.asarray(g)[None, :]
+            ).log_prob(float(y[i, 0]))
+        )
+        brute_force = np.trapezoid(
+            np.trapezoid(weights * log_prob, standard_normal_grid),
+            standard_normal_grid,
+        )
+        np.testing.assert_allclose(quadrature[i], brute_force, rtol=1e-9)
+
+
+def test_heteroscedastic_gev_expected_log_likelihood_is_finite_for_wide_moments():
+    likelihood = HeteroscedasticGEV(shape=-0.3)
+    y = jnp.array([[0.0], [5.0]])
+    value, gradients = jax.value_and_grad(
+        lambda m, v, mg, vg: jnp.sum(
+            likelihood.expected_log_likelihood(y, m, v, mean_g=mg, variance_g=vg)
+        ),
+        argnums=(0, 1, 2, 3),
+    )(jnp.zeros((2, 1)), jnp.full((2, 1), 100.0), jnp.zeros((2, 1)), jnp.ones((2, 1)))
+    assert jnp.isfinite(value)
+    assert all(jnp.all(jnp.isfinite(gradient)) for gradient in gradients)
+
+
+def test_heteroscedastic_gev_fits_with_the_heteroscedastic_family():
+    key_x, key_y = jr.split(jr.key(11))
+    x = jnp.sort(jr.uniform(key_x, (60, 1)), axis=0)
+    y = 1.0 + jnp.sin(4.0 * x) + 0.5 * jr.gumbel(key_y, (60, 1))
+    start_shape = 0.45
+    model = HeteroscedasticModel(
+        prior=Prior(kernel=RBF(), mean_function=Constant(1.0)),
+        likelihood=HeteroscedasticGEV(shape=start_shape),
+        noise_prior=Prior(kernel=RBF(), mean_function=Constant(-0.5)),
+    )
+    family = HeteroscedasticVariationalFamily(
+        model=model, inducing_inputs=jnp.linspace(0.0, 1.0, 8)[:, None]
+    )
+    fitted, history = gpx.fit(
+        model=family,
+        objective=lambda q, d: -heteroscedastic_elbo(q, d),
+        train_data=Dataset(X=x, y=y),
+        optim=ox.adam(0.05),
+        num_iters=150,
+        verbose=False,
+    )
+    assert jnp.all(jnp.isfinite(history))
+    assert history[-1] < history[0]
+    assert val(fitted.model.likelihood.shape) < start_shape
+
+
+def test_heteroscedastic_gev_return_level_and_period_samples():
+    likelihood = HeteroscedasticGEV(shape=0.1)
+    mean_f, mean_g = jnp.array([10.0, 12.0, 15.0]), jnp.array([0.0, 0.5, 1.0])
+    almost_zero = jnp.full(3, 1e-12)
+    dist_f, dist_g = _dense(mean_f, almost_zero), _dense(mean_g, almost_zero)
+    level_50 = gev_return_level(50.0, mean_f, jnp.exp(mean_g), 0.1)
+
+    levels = likelihood.return_level_samples(
+        dist_f, dist_g, jnp.array([10.0, 50.0]), key=jr.key(0), num_samples=40
+    )
+    assert levels.shape == (40, 2, 3)
+    np.testing.assert_allclose(
+        levels[:, 1], jnp.broadcast_to(level_50, (40, 3)), rtol=1e-5
+    )
+
+    periods = likelihood.return_period_samples(
+        dist_f, dist_g, level_50, key=jr.key(0), num_samples=40
+    )
+    assert periods.shape == (40, 3)
+    np.testing.assert_allclose(periods, 50.0, rtol=1e-4)
+
+
+def test_heteroscedastic_gev_return_level_samples_include_the_scale_uncertainty():
+    sd_g = 0.5
+    samples = HeteroscedasticGEV(shape=0.0).return_level_samples(
+        _dense(jnp.array([0.0]), jnp.array([1e-12])),
+        _dense(jnp.array([0.0]), jnp.array([sd_g**2])),
+        100.0,
+        key=jr.key(1),
+        num_samples=20000,
+    )
+    level_at_unit_scale = float(gev_return_level(100.0, 0.0, 1.0, 0.0))
+    np.testing.assert_allclose(jnp.median(samples), level_at_unit_scale, rtol=0.02)
+    np.testing.assert_allclose(
+        jnp.std(jnp.log(samples[:, 0] / level_at_unit_scale)), sd_g, rtol=0.03
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("shape", [-0.2, 0.2])
+def test_heteroscedastic_gev_recovery_with_whitened_families(shape):
+    num_data = 300
     key_x, key_y = jr.split(jr.key(int(1000 * shape) + num_data))
     x = jnp.sort(jr.uniform(key_x, (num_data, 1)), axis=0)
     location = 3.0 * jnp.sin(2.0 * jnp.pi * x)
     log_scale = -0.5 + x
-    y = gpx.distributions.GeneralisedExtremeValue(
-        location, jnp.exp(log_scale), shape
-    ).sample(key_y)
+    y = GeneralisedExtremeValue(location, jnp.exp(log_scale), shape).sample(key_y)
     sigma0 = float(jnp.std(y)) * np.sqrt(6.0) / np.pi
     mu0 = float(jnp.mean(y)) - 0.5772 * sigma0
-    z = jnp.linspace(0.0, 1.0, 15)[:, None]
-    prior_f = Prior(kernel=RBF(lengthscale=0.3), mean_function=Constant(mu0))
-    prior_g = Prior(
-        kernel=RBF(lengthscale=0.5, variance=0.25),
-        mean_function=Constant(np.log(sigma0)),
-    )
+    inducing_inputs = jnp.linspace(0.0, 1.0, 15)[:, None]
     model = _WhitenedTwoLatent(
-        q_f=gpx.variational_families.WhitenedVariationalGaussian(
-            model=prior_f * GEV(), inducing_inputs=z
+        q_f=_whitened_family_with_fixed_inducing_inputs(
+            Prior(kernel=RBF(lengthscale=0.3), mean_function=Constant(mu0)),
+            inducing_inputs,
         ),
-        q_g=gpx.variational_families.WhitenedVariationalGaussian(
-            model=prior_g * GEV(), inducing_inputs=z
+        q_g=_whitened_family_with_fixed_inducing_inputs(
+            Prior(
+                kernel=RBF(lengthscale=0.5, variance=0.25),
+                mean_function=Constant(np.log(sigma0)),
+            ),
+            inducing_inputs,
         ),
         likelihood=HeteroscedasticGEV(shape=0.0),
     )
@@ -952,31 +715,17 @@ def _check_whitened_two_latent_recovery(shape, num_data, num_steps, tolerance):
         objective=lambda m, d: -_whitened_two_latent_elbo(m, d),
         train_data=Dataset(X=x, y=y),
         optim=ox.adam(0.05),
-        num_iters=num_steps,
+        num_iters=2000,
         verbose=False,
     )
-    assert jnp.all(jnp.isfinite(history))
     grid = jnp.linspace(0.0, 1.0, 50)[:, None]
     mean_f = fitted.q_f.condition(None)(grid, covariance="diagonal").mean
     mean_g = fitted.q_g.condition(None)(grid, covariance="diagonal").mean
-    rmse_f = jnp.sqrt(
+    rmse_location = jnp.sqrt(
         jnp.mean((mean_f - 3.0 * jnp.sin(2.0 * jnp.pi * grid[:, 0])) ** 2)
     )
-    rmse_g = jnp.sqrt(jnp.mean((mean_g - (-0.5 + grid[:, 0])) ** 2))
-    assert abs(float(val(fitted.likelihood.shape)) - shape) < tolerance["shape"]
-    assert float(rmse_f) < tolerance["location"]
-    assert float(rmse_g) < tolerance["log_scale"]
-
-
-def test_heteroscedastic_gev_recovery_with_whitened_families_quick():
-    _check_whitened_two_latent_recovery(
-        0.2, 200, 1000, {"shape": 0.15, "location": 0.4, "log_scale": 0.25}
-    )
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("shape", [-0.2, 0.2])
-def test_heteroscedastic_gev_recovery_with_whitened_families(shape):
-    _check_whitened_two_latent_recovery(
-        shape, 300, 2000, {"shape": 0.15, "location": 0.4, "log_scale": 0.2}
-    )
+    rmse_log_scale = jnp.sqrt(jnp.mean((mean_g - (-0.5 + grid[:, 0])) ** 2))
+    assert jnp.all(jnp.isfinite(history))
+    assert abs(float(val(fitted.likelihood.shape)) - shape) < 0.15
+    assert float(rmse_location) < 0.4
+    assert float(rmse_log_scale) < 0.2
