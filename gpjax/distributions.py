@@ -314,48 +314,22 @@ def _kl_divergence(q: GaussianDistribution, p: GaussianDistribution) -> ScalarFl
     return (mahalanobis - n_dim - logdet_q + logdet_p + trace) / 2.0
 
 
-# ==============================================================================
-# Generalised extreme value distribution
-# ==============================================================================
-#
-# Notation. With z = (y - loc) / scale and the shape xi (``concentration``):
-# t = 1 + xi z, and the reduced variate u = log(t) / xi, which is z when xi = 0.
-# Then F(y) = exp(-exp(-u)) and log f(y) = -log(scale) - (1 + xi) u - exp(-u).
-#
-# The limit xi -> 0 contains the ratios log1p(w) / w and expm1(a) / a. Each
-# ratio is a Taylor series when its argument is small. The direct form of
-# the ratio is accurate, but its derivative loses about eps / |w| of relative
-# accuracy, so the series is used below |w| = 0.05.
-
 _SERIES_THRESHOLD = 0.05
-# log1p(w) / w = sum_k (-w)^k / (k + 1). With |w| < 0.05 the first omitted term
-# is below 1e-19.
 _LOG1P_RATIO_COEFFICIENTS = tuple((-1.0) ** k / (k + 1) for k in range(15))
-# expm1(a) / a = sum_k a^k / (k + 1)!.
 _EXPM1_RATIO_COEFFICIENTS = tuple(1.0 / math.factorial(k + 1) for k in range(11))
-# zeta(2), ..., zeta(20), for the series of the mean and variance near xi = 0.
-_ZETA = tuple(float(zeta(k)) for k in range(2, 21))
-# log Gamma(1 - xi) / xi = gamma + sum_{k >= 2} zeta(k) xi^(k - 1) / k.
+_EULER_GAMMA = 0.5772156649015329
+_ZETA_FROM_2 = tuple(float(zeta(k)) for k in range(2, 21))
 _LOG_GAMMA_RATIO_COEFFICIENTS = (
-    0.5772156649015329,
-    *(z / k for k, z in enumerate(_ZETA, start=2)),
+    _EULER_GAMMA,
+    *(z / k for k, z in enumerate(_ZETA_FROM_2, start=2)),
 )
-# [log Gamma(1 - 2 xi) - 2 log Gamma(1 - xi)] / xi^2
-#     = sum_{k >= 2} zeta(k) (2^k - 2) xi^(k - 2) / k.
 _LOG_GAMMA_DIFFERENCE_COEFFICIENTS = tuple(
-    z * (2.0**k - 2.0) / k for k, z in enumerate(_ZETA, start=2)
+    z * (2.0**k - 2.0) / k for k, z in enumerate(_ZETA_FROM_2, start=2)
 )
 
-# The support continuation (see `GeneralisedExtremeValue`). The lower junction
-# is where the reduced variate is u = -5, that is F = exp(-e^5) ~ 1e-64, for
-# every shape. The upper junction, for xi < 0 only, is where t = 1 + xi z is
-# 1e-2 (1 + xi), near the upper end point. A steeper continuation (u = -8, or
-# 1e-4 (1 + xi)) made fits from a poor start of the shape stop at worse optima.
 _CONTINUATION_LOWER_U = -5.0
 _CONTINUATION_UPPER_T = 1e-2
-
-# exp(-exp(8)) is 0 in float32 and in float64, so F is exactly 0 below u = -8.
-_SATURATION_U = -8.0
+_CDF_UNDERFLOW_U = -8.0
 
 
 def _as_arrays(*values: RealLike) -> tuple[Array, ...]:
@@ -442,34 +416,26 @@ def _continued_log_density(z: Array, xi: Array) -> Array:
     and ``xi`` agree on the two sides.
     """
     u_lo = _CONTINUATION_LOWER_U
-
-    # The lower junction. Its position, value and slope are smooth in xi.
     z_lo = u_lo * _expm1_ratio(xi * u_lo)
     value_lo = -(1.0 + xi) * u_lo - math.exp(-u_lo)
     slope_lo = (math.exp(-u_lo) - (1.0 + xi)) * jnp.exp(-xi * u_lo)
-    lower = z < z_lo
+    below_lower_junction = z < z_lo
 
-    # The upper junction, where t = t_hi (1 + xi). The factor (1 + xi) makes
-    # the slope there about -1 / t_hi for every xi, so the slope does not get
-    # smaller as xi decreases, and the gradient with respect to xi points into
-    # the support. The junction exists for xi < 0 only, and it moves to +inf
-    # as xi -> 0-, so xi is replaced by a safe value where it is not used.
-    upper = (xi < 0.0) & (1.0 + xi * z < _upper_junction_t(xi))
-    xi_up = jnp.where(upper, xi, -1.0)
-    t_up = _upper_junction_t(xi_up)
-    u_hi = jnp.log(t_up) / xi_up
-    z_hi = (t_up - 1.0) / xi_up
-    value_hi = -(1.0 + xi_up) * u_hi - jnp.exp(-u_hi)
-    slope_hi = (jnp.exp(-u_hi) - (1.0 + xi_up)) / t_up
+    above_upper_junction = (xi < 0.0) & (1.0 + xi * z < _upper_junction_t(xi))
+    xi_negative = jnp.where(above_upper_junction, xi, -1.0)
+    t_hi = _upper_junction_t(xi_negative)
+    u_hi = jnp.log(t_hi) / xi_negative
+    z_hi = (t_hi - 1.0) / xi_negative
+    value_hi = -(1.0 + xi_negative) * u_hi - jnp.exp(-u_hi)
+    slope_hi = (jnp.exp(-u_hi) - (1.0 + xi_negative)) / t_hi
 
-    # Between the junctions, t > 0 and u >= -5, so the exact form is safe.
-    exact = ~(lower | upper)
-    u = _reduced_variate(jnp.where(exact, z, 0.0), xi)
+    between_junctions = ~(below_lower_junction | above_upper_junction)
+    u = _reduced_variate(jnp.where(between_junctions, z, 0.0), xi)
     return jnp.where(
-        lower,
+        below_lower_junction,
         value_lo + slope_lo * (z - z_lo),
         jnp.where(
-            upper,
+            above_upper_junction,
             value_hi + slope_hi * (z - z_hi),
             _standard_log_density(u, xi),
         ),
@@ -484,8 +450,8 @@ def _tail_probabilities(z: Array, xi: Array) -> tuple[Array, Array]:
     ``1 - F`` is computed as ``-expm1(-exp(-u))``, so small exceedance
     probabilities keep their relative accuracy.
     """
-    z_saturated = _SATURATION_U * _expm1_ratio(xi * _SATURATION_U)
-    below = z < z_saturated
+    z_underflow = _CDF_UNDERFLOW_U * _expm1_ratio(xi * _CDF_UNDERFLOW_U)
+    below = z < z_underflow
     above = (xi < 0.0) & (1.0 + xi * z <= 0.0)
     inside = ~(below | above)
     u = _reduced_variate(jnp.where(inside, z, 0.0), xi)
@@ -535,7 +501,6 @@ def _standard_variance(xi: Array) -> Array:
     small = jnp.abs(xi) < _SERIES_THRESHOLD
     xi_small = jnp.where(small, xi, 0.0)
     xi_large = jnp.where(small, 0.25, xi)
-    # Series: exp(2 log Gamma(1 - xi)) expm1(D) / xi^2 with D / xi^2 a series.
     log_gamma = xi_small * _horner(xi_small, _LOG_GAMMA_RATIO_COEFFICIENTS)
     difference_ratio = _horner(xi_small, _LOG_GAMMA_DIFFERENCE_COEFFICIENTS)
     series = (
@@ -726,7 +691,7 @@ class GeneralisedExtremeValue(Distribution):
         validate_args: Passed to :class:`numpyro.distributions.Distribution`.
     """
 
-    arg_constraints = {  # noqa: RUF012 (the NumPyro interface)
+    arg_constraints = {  # noqa: RUF012
         "loc": constraints.real,
         "scale": constraints.positive,
         "concentration": constraints.real,

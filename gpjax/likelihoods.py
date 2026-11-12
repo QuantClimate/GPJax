@@ -689,16 +689,9 @@ class StudentT(AbstractLikelihood):
         return self.link_function(dist.mean)
 
 
-# ------------------------------------------------------------------------------
-# Generalised extreme value likelihoods
-# ------------------------------------------------------------------------------
-
 LatentDistribution = tp.Union[npd.MultivariateNormal, GaussianDistribution]
 ParameterLike = tp.Union[float, int, Float[Array, ""], AbstractUnwrappable]
 
-# The default bounds of the GEV shape. Annual maxima of rainfall, temperature
-# and wind give estimates of the shape in this interval, and the variance of
-# the GEV exists for shapes below 1/2.
 _GEV_SHAPE_BOUNDS = (-0.5, 0.5)
 
 
@@ -829,6 +822,13 @@ class GEV(AbstractLikelihood):
         q = gpx.variational_families.WhitenedVariationalGaussian(
             model=prior * gpx.likelihoods.GEV(scale=sigma0), inducing_inputs=z
         )
+        q = eqx.tree_at(
+            lambda q: q.inducing_inputs, q, paramax.non_trainable(q.inducing_inputs)
+        )
+
+    Keep the inducing inputs fixed, as in the last statement. If they train
+    with the step size of the other parameters, the fit can become unstable,
+    and its result can then change with the platform.
 
     The unwhitened :class:`~gpjax.variational_families.VariationalGaussian`
     starts its latent near 0, not at the mean function; give it
@@ -1099,7 +1099,8 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
 
     Here ``q_f`` and ``q_g`` are
     :class:`~gpjax.variational_families.WhitenedVariationalGaussian`, with
-    constant mean functions at $\mu_0$ and $\log\sigma_0$. With many
+    constant mean functions at $\mu_0$ and $\log\sigma_0$ and with fixed
+    inducing inputs, as for :class:`GEV`. With many
     observations at each input (for example many years at each station),
     gather the moments of each station by a station index. With one
     observation at each input, a location and a scale that both vary are
@@ -1272,13 +1273,12 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
         nodes, weights = np.polynomial.hermite.hermgauss(self.num_points)
         nodes = jnp.asarray(np.sqrt(2.0) * nodes, dtype=mean.dtype)
         weights = jnp.asarray(weights / np.sqrt(np.pi), dtype=mean.dtype)
-        f = mean[..., None] + jnp.sqrt(variance)[..., None] * nodes
-        g = mean_g[..., None] + jnp.sqrt(variance_g)[..., None] * nodes
-        # Axes (N, D, f node, g node).
-        log_prob = self.link_function(f[..., :, None], g[..., None, :]).log_prob(
-            y[..., None, None]
-        )
-        expected = jnp.einsum("ndij,i,j->nd", log_prob, weights, weights)
+        f_nodes = mean[..., None] + jnp.sqrt(variance)[..., None] * nodes
+        g_nodes = mean_g[..., None] + jnp.sqrt(variance_g)[..., None] * nodes
+        log_prob_on_node_grid = self.link_function(
+            f_nodes[..., :, None], g_nodes[..., None, :]
+        ).log_prob(y[..., None, None])
+        expected = jnp.einsum("ndfg,f,g->nd", log_prob_on_node_grid, weights, weights)
         return jnp.sum(expected, axis=1)
 
     def return_level_samples(

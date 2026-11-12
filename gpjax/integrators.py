@@ -85,7 +85,6 @@ class AbstractIntegrator:
         try:
             return bool(vars(self) == vars(other))
         except (TypeError, ValueError):
-            # An attribute with no single truth value, for example an array.
             return self is other
 
     def __hash__(self) -> int:
