@@ -19,13 +19,22 @@ float64.  The global ``jax_enable_x64`` flag is toggled per-test via the
 """
 
 from gpjax.dataset import Dataset
+from gpjax.distributions import GeneralisedExtremeValue
 from gpjax.gps import Prior
 from gpjax.kernels.stationary import RBF, Matern32
-from gpjax.likelihoods import Gaussian
+from gpjax.likelihoods import (
+    GEV,
+    Gaussian,
+    HeteroscedasticGEV,
+)
 from gpjax.mean_functions import Constant
-from gpjax.objectives import conjugate_mll
+from gpjax.objectives import (
+    conjugate_mll,
+    log_posterior_density,
+)
 from jax import config
 import jax.numpy as jnp
+import jax.random as jr
 import pytest
 
 config.update("jax_enable_x64", True)
@@ -133,3 +142,87 @@ def test_conjugate_mll_dtype(enable_x64):
 
     mll = conjugate_mll(posterior, D)
     assert mll.dtype == dtype, f"MLL dtype: expected {dtype}, got {mll.dtype}"
+
+
+# --------------------------------------------------------------------------- #
+#  GEV dtype tests                                                             #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+@pytest.mark.parametrize("continuation", [False, True])
+@pytest.mark.parametrize("shape", [-0.2, 0.0, 1e-6, 0.2])
+def test_gev_distribution_dtype(enable_x64, continuation, shape):
+    dtype = enable_x64
+    dist = GeneralisedExtremeValue(
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(2.0, dtype=dtype),
+        jnp.asarray(shape, dtype=dtype),
+        support_continuation=continuation,
+    )
+    y = jnp.linspace(-20.0, 30.0, 11, dtype=dtype)
+    q = jnp.linspace(0.01, 0.99, 5, dtype=dtype)
+    outputs = {
+        "log_prob": dist.log_prob(y),
+        "cdf": dist.cdf(y),
+        "sf": dist.sf(y),
+        "icdf": dist.icdf(q),
+        "isf": dist.isf(q),
+        "return_level": dist.return_level(jnp.asarray([10.0, 1e4], dtype=dtype)),
+        "return_level_of_a_float": dist.return_level(100.0),
+        "return_period": dist.return_period(y),
+        "sample": dist.sample(jr.key(0), (5,)),
+        "mean": dist.mean,
+        "variance": dist.variance,
+    }
+    for name, output in outputs.items():
+        assert output.dtype == dtype, f"{name}: expected {dtype}, got {output.dtype}"
+        if name != "log_prob" or continuation:
+            assert jnp.all(~jnp.isnan(output)), name
+    if continuation:
+        assert jnp.all(jnp.isfinite(outputs["log_prob"]))
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+def test_gev_float32_matches_float64():
+    def evaluate(dtype):
+        dist = GeneralisedExtremeValue(
+            jnp.asarray(1.0, dtype=dtype),
+            jnp.asarray(2.0, dtype=dtype),
+            jnp.asarray(1e-5, dtype=dtype),
+            support_continuation=True,
+        )
+        y = jnp.linspace(-5.0, 30.0, 11, dtype=dtype)
+        return dist.log_prob(y), dist.return_level(jnp.asarray([10.0, 1e3], dtype))
+
+    for low, high in zip(evaluate(jnp.float32), evaluate(jnp.float64), strict=True):
+        assert low.dtype == jnp.float32
+        assert jnp.allclose(low, high, rtol=1e-5, atol=1e-5)
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+@pytest.mark.filterwarnings("ignore:X is not of type float64:UserWarning")
+@pytest.mark.filterwarnings("ignore:y is not of type float64:UserWarning")
+def test_gev_likelihood_dtype(enable_x64):
+    dtype = enable_x64
+    y = jnp.linspace(0.0, 3.0, 6, dtype=dtype)[:, None]
+    mean = jnp.zeros((6, 1), dtype=dtype)
+    variance = jnp.full((6, 1), 0.5, dtype=dtype)
+
+    expected = GEV(scale=1.5, shape=0.1).expected_log_likelihood(y, mean, variance)
+    assert expected.dtype == dtype
+    expected = HeteroscedasticGEV(shape=0.1).expected_log_likelihood(
+        y, mean, variance, mean_g=mean, variance_g=variance
+    )
+    assert expected.dtype == dtype
+
+    data = Dataset(X=jnp.linspace(0.0, 1.0, 6, dtype=dtype)[:, None], y=y)
+    prior = Prior(mean_function=Constant(), kernel=RBF())
+    model = (prior * GEV(scale=1.5, shape=0.1)).init_latent(data.n)
+    model = model.__class__(
+        prior=model.prior,
+        likelihood=model.likelihood,
+        latent=jnp.zeros((6, 1), dtype=dtype),
+    )
+    density = log_posterior_density(model, data)
+    assert density.dtype == dtype

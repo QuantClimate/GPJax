@@ -229,6 +229,63 @@ def test_non_conjugate_mll_studentt(n_points, n_dims, key_val):
     assert jnp.isfinite(dof_grad).all()
 
 
+@pytest.mark.parametrize("shape", [-0.3, 0.0, 0.3])
+def test_log_posterior_density_gev(shape):
+    # The latent starts far from the data, so many observations are outside
+    # the support of the GEV; the support continuation keeps the density and
+    # its gradients finite.
+    key = jr.key(0)
+    x = jnp.linspace(0.0, 1.0, 12)[:, None]
+    y = 40.0 + 12.0 * jr.gumbel(key, (12, 1))
+    D = Dataset(X=x, y=y)
+    p = gpx.gps.Prior(
+        kernel=gpx.kernels.RBF(), mean_function=gpx.mean_functions.Constant()
+    )
+    post = (p * gpx.likelihoods.GEV(scale=1.0, shape=shape)).init_latent(D.n)
+    assert isinstance(post, gpx.gps.NonConjugateModel)
+
+    params, static = eqx.partition(post, eqx.is_array)
+
+    def loss(params):
+        return -non_conjugate_mll(eqx.combine(params, static), D)
+
+    value = loss(params)
+    assert value.shape == ()
+    assert jnp.isfinite(value)
+    np.testing.assert_allclose(jax.jit(loss)(params), value, rtol=1e-12)
+    grads = jax.grad(loss)(params)
+    assert all(jnp.all(jnp.isfinite(g)) for g in jtu.tree_leaves(grads))
+    assert jnp.isfinite(grads.likelihood.shape._unconstrained)
+    assert jnp.isfinite(grads.likelihood.scale._unconstrained)
+
+
+@pytest.mark.parametrize("shape", [-0.3, 0.0, 0.3])
+def test_elbo_gev_with_a_wide_variational_distribution(shape):
+    key = jr.key(1)
+    x = jnp.linspace(0.0, 1.0, 20)[:, None]
+    y = 2.0 + jr.gumbel(key, (20, 1))
+    D = Dataset(X=x, y=y)
+    p = gpx.gps.Prior(
+        kernel=gpx.kernels.RBF(), mean_function=gpx.mean_functions.Constant()
+    )
+    z = jnp.linspace(0.0, 1.0, 5)[:, None]
+    q = gpx.variational_families.VariationalGaussian(
+        model=p * gpx.likelihoods.GEV(shape=shape),
+        inducing_inputs=z,
+        variational_root_covariance=10.0 * jnp.eye(5),
+    )
+    params, static = eqx.partition(q, eqx.is_array)
+
+    def loss(params):
+        return -elbo(eqx.combine(params, static), D)
+
+    value = loss(params)
+    assert jnp.isfinite(value)
+    np.testing.assert_allclose(jax.jit(loss)(params), value, rtol=1e-12)
+    grads = jax.grad(loss)(params)
+    assert all(jnp.all(jnp.isfinite(g)) for g in jtu.tree_leaves(grads))
+
+
 @pytest.mark.parametrize("n_points", [10, 20])
 @pytest.mark.parametrize("n_dims", [1, 2, 3])
 @pytest.mark.parametrize("key_val", [123, 42])

@@ -8,4 +8,7 @@
    :nosignatures:
 
    GaussianDistribution
+   GeneralisedExtremeValue
+   gev_return_level
+   gev_return_period
 ```

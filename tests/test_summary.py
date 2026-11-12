@@ -387,3 +387,26 @@ def test_summarise_renders_prior_column_when_priors_given():
 def test_summarise_prior_column_defaults_to_dash():
     # Without a priors map the Prior column is present but unpopulated.
     assert "LogNormal" not in _capture(Prior(mean_function=Zero(), kernel=RBF()))
+
+
+def test_collect_gev_likelihood_parameters():
+    from gpjax.likelihoods import GEV
+
+    records = summary._collect(GEV(scale=12.0, shape=0.1))
+    scale = _record_by_name(records, "scale")
+    shape = _record_by_name(records, "shape")
+    assert (scale.cls, scale.bijector, scale.trainable) == (
+        "PositiveReal",
+        "Softplus",
+        True,
+    )
+    assert (shape.cls, shape.bijector, shape.trainable) == (
+        "SigmoidBounded",
+        "Sigmoid[-0.5, 0.5]",
+        True,
+    )
+    np.testing.assert_allclose(np.asarray(shape.value), 0.1)
+    frozen = summary._collect(GEV(shape=paramax.non_trainable(jnp.array(0.2))))
+    assert _record_by_name(frozen, "shape").trainable is False
+    text = _capture(GEV())
+    assert "Sigmoid[-0.5, 0.5]" in text

@@ -21,10 +21,16 @@ linalg operators) produce identical results with and without
 """
 
 from gpjax.dataset import Dataset
+from gpjax.distributions import GeneralisedExtremeValue
 from gpjax.gps import Prior
 from gpjax.kernels.stationary import RBF, Matern32
-from gpjax.likelihoods import Gaussian
+from gpjax.likelihoods import (
+    GEV,
+    Gaussian,
+    HeteroscedasticGEV,
+)
 from gpjax.mean_functions import Constant
+from gpjax.objectives import log_posterior_density
 import jax
 from jax import config
 import jax.numpy as jnp
@@ -124,6 +130,56 @@ def test_conjugate_posterior_predict_jit(train_data, test_inputs):
 
     assert jnp.allclose(mean, mean_jit, atol=1e-12)
     assert jnp.allclose(cov, cov_jit, atol=1e-12)
+
+
+# --------------------------------------------------------------------------- #
+#  GEV JIT tests                                                               #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("continuation", [False, True])
+def test_gev_distribution_jit(continuation):
+    y = jnp.linspace(-3.0, 10.0, 7)
+
+    def evaluate(loc, scale, shape):
+        dist = GeneralisedExtremeValue(
+            loc, scale, shape, support_continuation=continuation
+        )
+        return (
+            dist.log_prob(y),
+            dist.cdf(y),
+            dist.sf(y),
+            dist.return_level(jnp.array([10.0, 100.0])),
+            dist.return_period(y),
+        )
+
+    args = (jnp.array(1.0), jnp.array(2.0), jnp.array(0.1))
+    for eager, jitted in zip(evaluate(*args), jax.jit(evaluate)(*args), strict=True):
+        assert jnp.allclose(eager, jitted, atol=1e-12)
+
+
+def test_gev_log_posterior_density_jit(train_data):
+    prior = Prior(mean_function=Constant(), kernel=RBF())
+    model = (prior * GEV(scale=0.5, shape=0.2)).init_latent(train_data.n)
+
+    value = log_posterior_density(model, train_data)
+    value_jit = jax.jit(log_posterior_density)(model, train_data)
+    assert jnp.allclose(value, value_jit, atol=1e-12)
+
+
+def test_heteroscedastic_gev_expected_log_likelihood_jit():
+    likelihood = HeteroscedasticGEV(shape=-0.1)
+    y = jnp.linspace(0.0, 2.0, 5)[:, None]
+    moments = (jnp.zeros((5, 1)), jnp.full((5, 1), 0.2))
+
+    def evaluate(likelihood, mean, variance):
+        return likelihood.expected_log_likelihood(
+            y, mean, variance, mean_g=0.5 * mean, variance_g=0.5 * variance
+        )
+
+    eager = evaluate(likelihood, *moments)
+    jitted = jax.jit(evaluate)(likelihood, *moments)
+    assert jnp.allclose(eager, jitted, atol=1e-12)
 
 
 # --------------------------------------------------------------------------- #

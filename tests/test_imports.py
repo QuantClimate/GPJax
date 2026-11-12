@@ -25,3 +25,20 @@ def test_common_imports():
     assert callable(gpjax.fit_natgrads)
     assert callable(gpjax.fit_scipy)
     assert callable(gpjax.cite)
+
+
+def test_gev_names_are_exported():
+    """The GEV distribution, its functions and the GEV likelihoods are public."""
+    import gpjax.distributions
+    import gpjax.likelihoods
+
+    for name in (
+        "GeneralisedExtremeValue",
+        "gev_return_level",
+        "gev_return_period",
+    ):
+        assert name in gpjax.distributions.__all__
+        assert hasattr(gpjax.distributions, name)
+    for name in ("GEV", "HeteroscedasticGEV"):
+        assert name in gpjax.likelihoods.__all__
+        assert hasattr(gpjax.likelihoods, name)
