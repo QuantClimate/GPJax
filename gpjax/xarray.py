@@ -455,6 +455,76 @@ class GridSpec:
             self._scatter(dist.mean, {}), self._scatter(dist.variance, {})
         )
 
+    def scatter(
+        self,
+        values: tp.Union[Float[Array, "..."], np.ndarray],
+        *,
+        name: str,
+        dims: tp.Sequence[str] = (),
+        coords: tp.Optional[tp.Mapping[str, tp.Any]] = None,
+        attrs: tp.Optional[tp.Mapping[str, tp.Any]] = None,
+    ) -> xr.DataArray:
+        r"""Place one value for each kept cell onto the labelled grid.
+
+        Use this for a quantity that is computed for each cell from a
+        prediction, for example posterior samples of a GEV return level. The
+        last axis of ``values`` has one entry for each kept cell, in flattened
+        order, as for the inputs from :meth:`inputs_for`. Leading axes, for
+        example samples or return periods, become the leading dims.
+
+        Example:
+            .. code-block:: python
+
+                x_grid, grid_spec = spec.inputs_for(grid)
+                levels = likelihood.return_level_samples(
+                    posterior(x_grid), jnp.array([10.0, 100.0]), key=key
+                )  # shape (num_samples, 2, N)
+                level_map = grid_spec.scatter(
+                    levels,
+                    name="return_level",
+                    dims=("sample", "return_period"),
+                    coords={"return_period": [10.0, 100.0]},
+                    attrs={"units": "mm"},
+                )
+                interval = level_map.quantile([0.05, 0.5, 0.95], dim="sample")
+
+        Args:
+            values: The values, with the cells on the last axis.
+            name: The name of the returned ``DataArray``.
+            dims: The names of the leading axes of ``values``, one for each.
+            coords: Coordinates for the leading dims, for example
+                ``{"return_period": [10.0, 100.0]}``.
+            attrs: The attributes of the result, for example the units. There
+                are none by default, because the quantity is not always the
+                target (a return period is in years, not in the units of the
+                data).
+
+        Returns:
+            An ``xr.DataArray`` over ``(*dims, *grid dims)``. Cells that this
+            spec did not keep are NaN.
+
+        Raises:
+            ValueError: If the last axis does not match the number of kept
+                cells, or ``dims`` does not name every leading axis.
+        """
+        values = np.asarray(values)
+        n_values = values.shape[-1] if values.ndim else 0
+        if n_values != self.n_kept:
+            raise ValueError(
+                f"values have {n_values} values on the last axis but this spec "
+                f"expects {self.n_kept}; were they computed on a different grid?"
+            )
+        dims = tuple(dims)
+        if len(dims) != values.ndim - 1:
+            raise ValueError(
+                f"values have {values.ndim - 1} leading axes, so dims must name "
+                f"{values.ndim - 1}, not {len(dims)} ({dims})"
+            )
+        grid = self._scatter(values, dict(attrs or {}), dims)
+        if coords:
+            grid = grid.assign_coords(coords)
+        return grid.rename(name)
+
     def _grid_of(
         self, obj: tp.Union[xr.Dataset, xr.DataArray]
     ) -> tuple[xr.Dataset, list[xr.DataArray], tuple[str, ...]]:

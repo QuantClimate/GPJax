@@ -65,6 +65,32 @@ class AbstractIntegrator:
         """
         return self.integrate(fun, y, mean, variance, likelihood)
 
+    def __eq__(self, other: object) -> bool:
+        r"""Compare two integrators by their type and their settings.
+
+        A likelihood keeps its integrator as a static pytree field, and JAX
+        compares static fields with `==`. With this comparison, two likelihoods
+        that are built with equal integrators are equal pytrees: `jax.vmap` can
+        stack them, and a jit-compiled function does not compile again for the
+        second one.
+
+        Args:
+            other: The object to compare with.
+
+        Returns:
+            `True` if `other` has the same type and the same attributes.
+        """
+        if type(self) is not type(other):
+            return False
+        try:
+            return bool(vars(self) == vars(other))
+        except (TypeError, ValueError):
+            return self is other
+
+    def __hash__(self) -> int:
+        r"""Hash an integrator by its type, in agreement with `__eq__`."""
+        return hash(type(self))
+
 
 class GHQuadratureIntegrator(AbstractIntegrator):
     r"""Compute an integral using Gauss-Hermite quadrature.

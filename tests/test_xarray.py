@@ -661,3 +661,36 @@ def test_predict_rejects_a_predict_fn_of_the_wrong_shape(field):
 
     with pytest.raises(ValueError, match="one value per input"):
         spec.predict(one_value, field, chunk_size=4)
+
+
+def test_scatter_places_per_cell_values_on_the_grid(field):
+    field["t2m"][0, 0, 0] = np.nan
+    data, spec = from_xarray(field, target="t2m", inputs=["lat", "lon"])
+    values = np.arange(2 * 3 * data.n, dtype=float).reshape(2, 3, data.n)
+
+    out = spec.scatter(
+        values,
+        name="return_level",
+        dims=("sample", "return_period"),
+        coords={"return_period": [10.0, 50.0, 100.0]},
+        attrs={"units": "K"},
+    )
+
+    assert isinstance(out, xr.DataArray)
+    assert out.name == "return_level"
+    assert out.dims == ("sample", "return_period", "time", "lat", "lon")
+    np.testing.assert_array_equal(out["return_period"], [10.0, 50.0, 100.0])
+    np.testing.assert_array_equal(out["lat"], field["lat"])
+    assert out.attrs == {"units": "K"}
+    assert np.isnan(out.values[:, :, 0, 0, 0]).all()
+    np.testing.assert_array_equal(out.values[..., spec.mask], values)
+
+
+def test_scatter_rejects_values_that_do_not_match_the_grid(field):
+    data, spec = from_xarray(field, target="t2m", inputs=["lat"])
+    with pytest.raises(ValueError, match=r"5 values.*expects 12"):
+        spec.scatter(np.zeros(5), name="x")
+    with pytest.raises(ValueError, match="dims"):
+        spec.scatter(np.zeros((3, data.n)), name="x")
+    with pytest.raises(ValueError, match="dims"):
+        spec.scatter(np.zeros(data.n), name="x", dims=("sample",))

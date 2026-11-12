@@ -11,7 +11,9 @@
    AbstractLikelihood
    AbstractNoiseTransform
    Bernoulli
+   GEV
    Gaussian
+   HeteroscedasticGEV
    HeteroscedasticGaussian
    LogNormalTransform
    MultiOutputGaussian

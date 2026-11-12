@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **GEV likelihoods and return levels for extremes.** `likelihoods.GEV` puts a
+  latent GP on the location of a generalised extreme value distribution, and
+  `HeteroscedasticGEV` adds a second latent GP for the scale. The new
+  `distributions.GeneralisedExtremeValue` is stable at the Gumbel limit, has an
+  accurate `sf` and `isf`, and an optional support continuation that keeps the
+  log density finite for inference. `return_level_samples` and
+  `return_period_samples` give posterior samples; `gev_return_level`,
+  `gev_return_period` and `GridSpec.scatter` give levels and labelled maps.
+
+### Fixed
+
+- **Likelihoods with equal integrators are now equal pytrees.** An integrator
+  compares by its type and its settings. Before, two likelihoods that were built
+  with the same explicit integrator, for example `GHQuadratureIntegrator(10)`,
+  were different pytrees: `jax.vmap` could not stack them, and a jit-compiled
+  function compiled again for each one.
+
 ## [1.1.0] — 2026-11-10
 
 ### Added

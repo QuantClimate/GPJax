@@ -19,13 +19,19 @@ float64.  The global ``jax_enable_x64`` flag is toggled per-test via the
 """
 
 from gpjax.dataset import Dataset
+from gpjax.distributions import GeneralisedExtremeValue
 from gpjax.gps import Prior
 from gpjax.kernels.stationary import RBF, Matern32
-from gpjax.likelihoods import Gaussian
+from gpjax.likelihoods import (
+    GEV,
+    Gaussian,
+    HeteroscedasticGEV,
+)
 from gpjax.mean_functions import Constant
 from gpjax.objectives import conjugate_mll
 from jax import config
 import jax.numpy as jnp
+import jax.random as jr
 import pytest
 
 config.update("jax_enable_x64", True)
@@ -133,3 +139,46 @@ def test_conjugate_mll_dtype(enable_x64):
 
     mll = conjugate_mll(posterior, D)
     assert mll.dtype == dtype, f"MLL dtype: expected {dtype}, got {mll.dtype}"
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+@pytest.mark.parametrize("shape", [-0.2, 1e-6, 0.2])
+def test_gev_distribution_dtype(enable_x64, shape):
+    dtype = enable_x64
+    dist = GeneralisedExtremeValue(
+        jnp.asarray(1.0, dtype=dtype),
+        jnp.asarray(2.0, dtype=dtype),
+        jnp.asarray(shape, dtype=dtype),
+        support_continuation=True,
+    )
+    y = jnp.linspace(-20.0, 30.0, 11, dtype=dtype)
+    q = jnp.linspace(0.01, 0.99, 5, dtype=dtype)
+    outputs = {
+        "log_prob": dist.log_prob(y),
+        "cdf": dist.cdf(y),
+        "sf": dist.sf(y),
+        "icdf": dist.icdf(q),
+        "isf": dist.isf(q),
+        "return_level": dist.return_level(100.0),
+        "return_period": dist.return_period(y),
+        "sample": dist.sample(jr.key(0), (5,)),
+        "mean": dist.mean,
+        "variance": dist.variance,
+    }
+    for name, output in outputs.items():
+        assert output.dtype == dtype, name
+        assert not jnp.any(jnp.isnan(output)), name
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+def test_gev_likelihood_dtype(enable_x64):
+    dtype = enable_x64
+    y = jnp.linspace(0.0, 3.0, 6, dtype=dtype)[:, None]
+    mean = jnp.zeros((6, 1), dtype=dtype)
+    variance = jnp.full((6, 1), 0.5, dtype=dtype)
+    one_latent = GEV(scale=1.5, shape=0.1).expected_log_likelihood(y, mean, variance)
+    two_latents = HeteroscedasticGEV(shape=0.1).expected_log_likelihood(
+        y, mean, variance, mean_g=mean, variance_g=variance
+    )
+    assert one_latent.dtype == dtype
+    assert two_latents.dtype == dtype

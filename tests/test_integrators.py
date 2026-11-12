@@ -14,10 +14,15 @@
 # ==============================================================================
 
 
-from gpjax.integrators import GHQuadratureIntegrator
+import equinox as eqx
+from gpjax.integrators import (
+    AnalyticalGaussianIntegrator,
+    GHQuadratureIntegrator,
+)
 from gpjax.likelihoods import (
     Bernoulli,
     Gaussian,
+    HeteroscedasticGEV,
 )
 import jax
 from jax import config
@@ -93,3 +98,47 @@ def test_bernoulli_quadrature(jit: bool, params: tuple[float, float]):
     else:
         ell = likelihood.expected_log_likelihood(y=y, mean=mu, variance=variance)
     np.testing.assert_almost_equal(ell, expected)
+
+
+def test_integrators_compare_by_type_and_settings():
+    assert GHQuadratureIntegrator(10) == GHQuadratureIntegrator(10)
+    assert hash(GHQuadratureIntegrator(10)) == hash(GHQuadratureIntegrator(10))
+    assert GHQuadratureIntegrator(10) != GHQuadratureIntegrator(20)
+    assert GHQuadratureIntegrator() != AnalyticalGaussianIntegrator()
+
+
+def test_integrators_with_array_settings_compare_by_identity():
+    class WithArraySetting(GHQuadratureIntegrator):
+        def __init__(self):
+            super().__init__()
+            self.nodes = jnp.arange(3.0)
+
+    integrator = WithArraySetting()
+    the_same_integrator = integrator
+    assert integrator == the_same_integrator
+    assert integrator != WithArraySetting()
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: HeteroscedasticGEV(shape=0.1, num_points=3),
+        lambda: Bernoulli(integrator=GHQuadratureIntegrator(10)),
+    ],
+)
+def test_likelihoods_with_equal_integrators_are_equal_pytrees(build):
+    first, second = build(), build()
+    stacked = jax.tree_util.tree_map(lambda a, b: jnp.stack([a, b]), first, second)
+    assert jax.tree_util.tree_structure(stacked) == jax.tree_util.tree_structure(first)
+
+    trace_count = 0
+
+    @eqx.filter_jit
+    def traced(likelihood):
+        nonlocal trace_count
+        trace_count += 1
+        return jnp.zeros(())
+
+    traced(first)
+    traced(second)
+    assert trace_count == 1
