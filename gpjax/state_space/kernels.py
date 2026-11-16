@@ -107,7 +107,7 @@ def to_sde(kernel) -> LinearSDE:
         >>> import gpjax as gpx
         >>> from gpjax.state_space import to_sde
         >>> sde = to_sde(gpx.kernels.Matern32(lengthscale=1.0, variance=1.0))
-        >>> sde.__class__.__name__
+        >>> type(sde).__name__
         'Matern32SDE'
     """
     raise NotImplementedError(

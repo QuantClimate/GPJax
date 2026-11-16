@@ -104,7 +104,7 @@ class StateSpacePosterior(Posterior):
         ...     kernel=gpx.kernels.Matern32(lengthscale=1.0, variance=1.0),
         ... ) * gpx.likelihoods.Gaussian(obs_stddev=0.1)
         >>> posterior = model | D
-        >>> posterior.__class__.__name__
+        >>> type(posterior).__name__
         'StateSpacePosterior'
         >>> predictive = posterior(jnp.array([[1.0], [2.0]]))
         >>> predictive.mean.shape

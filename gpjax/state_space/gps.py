@@ -114,7 +114,7 @@ class StateSpaceConjugateModel(ConjugateModel):
         ... )
         >>> likelihood = gpx.likelihoods.Gaussian(obs_stddev=0.1)
         >>> posterior = prior * likelihood
-        >>> posterior.__class__.__name__
+        >>> type(posterior).__name__
         'StateSpaceConjugateModel'
     """
 
