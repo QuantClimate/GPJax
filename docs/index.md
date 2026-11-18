@@ -183,6 +183,7 @@ examples/oak
 examples/oceanmodelling
 examples/spatial_linear_gp
 examples/yacht
+examples/safe_optimization
 ```
 
 ```{toctree}
