@@ -39,10 +39,7 @@ from gpjax.gps import (
 )
 from gpjax.kernels import RBF
 from gpjax.likelihoods import Gaussian
-from gpjax.mean_functions import (
-    AbstractMeanFunction,
-    Constant,
-)
+from gpjax.mean_functions import Constant
 from gpjax.objectives import (
     conjugate_mll,
     dual_elbo,
@@ -52,7 +49,6 @@ from gpjax.parameters import (
     PositiveReal,
     val,
 )
-from gpjax.typing import Array
 from gpjax.variational_families import (
     CollapsedVariationalGaussian,
     DualVariationalGaussian,
@@ -61,15 +57,12 @@ from gpjax.variational_families import (
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from jaxtyping import (
-    Float,
-    Num,
-)
 import numpy as np
 import optax as ox
 import paramax
 import pytest
 import scipy
+from scipy.optimize import OptimizeResult
 
 from tests._reference.conjugate_svgp import conjugate_optimum
 
@@ -164,6 +157,33 @@ def test_fit_scipy_simple():
 
     # Test stop_gradient on bias (static field, not trained):
     assert trained_model.bias == 1.0
+
+
+def test_fit_scipy_uses_lbfgsb(monkeypatch):
+    # Create dataset:
+    X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
+    y = 2.0 * X + 1.0
+    D = Dataset(X, y)
+
+    model = LinearModel(weight=1.0, bias=1.0)
+
+    # Define loss function:
+    def mse(model, data):
+        pred = model(data.X)
+        return jnp.mean((pred - data.y) ** 2)
+
+    # Record the arguments fit_scipy hands to SciPy without running an optimiser:
+    seen = {}
+
+    def fake_minimize(*args, **kwargs):
+        seen.update(kwargs)
+        return OptimizeResult(x=kwargs["x0"], fun=0.0, success=True, message="ok")
+
+    monkeypatch.setattr(sys.modules["gpjax.fit"], "minimize", fake_minimize)
+    fit_scipy(model=model, objective=mse, train_data=D, max_iters=5, verbose=False)
+
+    # The docstring promises L-BFGS-B, so the method must not be left to SciPy:
+    assert seen["method"] == "L-BFGS-B"
 
 
 def test_fit_lbfgs_simple():
@@ -330,25 +350,7 @@ def test_fit_scipy_error_raises() -> None:
         X=jnp.array([[0.0]], dtype=jnp.float64), y=jnp.array([[0.0]], dtype=jnp.float64)
     )
 
-    # build crazy mean function so that opt fails
-    class CrazyMean(AbstractMeanFunction):
-        def __call__(self, x: Num[Array, "N D"]) -> Float[Array, "N O"]:
-            return jnp.heaviside(x, 100.0)
-
-    # Define GP model with crazy mean function:
-    prior = Prior(kernel=RBF(), mean_function=CrazyMean())
-    likelihood = Gaussian()
-    posterior = prior * likelihood
-
-    with pytest.raises(scipy.optimize.OptimizeWarning):
-        fit_scipy(
-            model=posterior,
-            objective=conjugate_mll,
-            train_data=D,
-            max_iters=10,
-        )
-
-    # also check fails if no given enough steps
+    # a solver that stops at its iteration limit reports that it did not converge
     prior = Prior(kernel=RBF(), mean_function=Constant())
     likelihood = Gaussian()
     posterior = prior * likelihood

@@ -15,6 +15,7 @@
 
 import functools
 import typing as tp
+import warnings
 
 import equinox as eqx
 import jax
@@ -22,7 +23,7 @@ from jax.flatten_util import ravel_pytree
 import jax.numpy as jnp
 import jax.random as jr
 import optax as ox
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeWarning, minimize
 
 from gpjax.dataset import Dataset
 from gpjax.natural_gradients import (
@@ -236,10 +237,26 @@ def fit_scipy(
         fun=scipy_wrapper,
         x0=x0,
         jac=True,
+        method="L-BFGS-B",
         callback=lambda X: history.append(scipy_wrapper(X)[0]),
-        options={"maxiter": max_iters, "disp": verbose},
+        options={"maxiter": max_iters},
     )
     history = jnp.array(history)
+
+    # L-BFGS-B has no verbosity option in SciPy, so report the outcome here
+    # rather than handing the solver an option it silently ignores.
+    if verbose:
+        print(
+            f"L-BFGS-B stopped after {len(history) - 1} iterations with "
+            f"objective {float(history[-1]):.6g}: {result.message}"
+        )
+
+    # A solver that gave up leaves a model that is no better than its starting
+    # point, which is easy to mistake for a converged fit.
+    if not result.success:
+        warnings.warn(
+            f"SciPy did not converge: {result.message}", OptimizeWarning, stacklevel=2
+        )
 
     # convert back to pytree with JAX arrays
     params = scipy_to_jnp(result.x)
