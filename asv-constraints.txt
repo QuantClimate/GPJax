@@ -8,14 +8,14 @@ jaxlib==0.10.2 ; python_full_version < '3.12'
 jaxlib==0.11.2 ; python_full_version >= '3.12'
 jaxtyping==0.3.11
 lineax==0.1.1
-markdown-it-py==4.2.0
+markdown-it-py==4.3.0
 mdurl==0.1.2
 ml-dtypes==0.6.0
 multipledispatch==1.0.0
 numpy==2.4.6
 numpyro==0.22.0
 opt-einsum==3.4.0
-optax==0.2.8
+optax==0.2.9
 paramax==0.0.5
 pygments==2.21.0
 rich==15.0.0
