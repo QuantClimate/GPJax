@@ -418,12 +418,33 @@ class OILMMPosterior(Posterior):
         r"""Evaluate the conditioned OILMM at the given test inputs.
 
         Each latent process is queried independently and mixed back into output
-        space: the mean as :math:`H \mu`, and the covariance as
-        :math:`(H \otimes I) \Sigma (H \otimes I)^{\top}`.
+        space. Let :math:`\mu_m` and :math:`\Sigma_m` be the mean vector and the
+        :math:`N \times N` covariance of latent process :math:`m` at the test
+        inputs, and let :math:`h_m` be column :math:`m` of the mixing matrix
+        :math:`H`.
+
+        The flattened vector is interleaved (input-major): the value for test
+        input :math:`n` and output :math:`p` is at index :math:`nP + p`. All
+        :math:`P` outputs for test input 0 come first, then all :math:`P`
+        outputs for test input 1, and so on. Thus ``mean.reshape(N, P)`` gives
+        the output-space mean with one row for each test input. This is
+        different from ``ExactPosterior`` with a multi-output likelihood and
+        from the ICM and LCM kernels, which put all :math:`N` values for one
+        output first (index :math:`pN + n`).
+
+        In this ordering, the mean is :math:`\operatorname{vec}(H \Lambda)`,
+        where :math:`\Lambda` is the :math:`M \times N` matrix whose rows are
+        the :math:`\mu_m` and :math:`\operatorname{vec}` stacks the columns of
+        the :math:`P \times N` matrix :math:`H \Lambda`. The covariance
+        is :math:`\sum_{m=1}^{M} \Sigma_m \otimes h_m h_m^{\top}`, which is
+        :math:`(I_N \otimes H) \tilde{\Sigma} (I_N \otimes H)^{\top}`, where
+        :math:`\tilde{\Sigma}` is the joint latent covariance in the same
+        interleaved ordering. The marginal variance at index :math:`nP + p` is
+        :math:`\sum_{m} H_{pm}^2 \, [\Sigma_m]_{nn}`.
 
         Note that for this multi-output process ``covariance="dense"`` returns
         the joint :math:`(NP, NP)` covariance across both test inputs and
-        outputs, flattened output-major to match the mean; single-output
+        outputs, in the same interleaved ordering as the mean; single-output
         processes return :math:`(N, N)`. ``covariance="diagonal"`` returns the
         :math:`NP` marginal variances, and asks the same of each latent
         process, so the dense latent covariances are never formed.
@@ -442,7 +463,7 @@ class OILMMPosterior(Posterior):
 
         Returns:
             GaussianDistribution: The predictive distribution, with ``loc`` of
-            shape ``(NP,)`` flattened output-major.
+            shape ``(NP,)`` in interleaved ordering (index :math:`nP + p`).
         """
         num_test = test_inputs.shape[0]
         mixing = self.mixing_matrix.H  # [P, M]
@@ -456,7 +477,7 @@ class OILMMPosterior(Posterior):
         )  # [M, N]
 
         mixed_mean = jnp.einsum("pm,mn->pn", mixing, latent_means)  # [P, N]
-        mixed_mean_flat = mixed_mean.T.ravel()  # [NP], output-major
+        mixed_mean_flat = mixed_mean.T.ravel()  # [NP], index n * P + p
 
         if covariance == "dense":
             # Cov[p1, p2] = sum_m H[p1, m] H[p2, m] Sigma_latent_m.
@@ -466,7 +487,8 @@ class OILMMPosterior(Posterior):
             blocks = jnp.einsum(
                 "pm,qm,mij->pqij", mixing, mixing, latent_covariances
             )  # [P, P, N, N]
-            # Reorder to [N, P, N, P] so flattening matches the mean's.
+            # Reorder to [N, P, N, P] so that flattening gives the interleaved
+            # ordering of the mean (index n * P + p).
             size = num_test * self.num_outputs
             scale = lx.MatrixLinearOperator(
                 blocks.transpose(2, 0, 3, 1).reshape(size, size)
@@ -478,6 +500,7 @@ class OILMMPosterior(Posterior):
             mixed_variances = jnp.einsum(
                 "pm,mn->pn", self.mixing_matrix.H_squared, latent_variances
             )  # [P, N]
+            # [N, P] then flatten: index n * P + p, the same as the mean.
             scale = lx.DiagonalLinearOperator(mixed_variances.T.ravel())
 
         return GaussianDistribution(
