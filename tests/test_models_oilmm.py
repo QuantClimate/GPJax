@@ -265,7 +265,7 @@ class TestOILMMPosterior:
         X_test = jnp.linspace(0.1, 0.9, N_test).reshape(-1, 1)
         pred = posterior.predict(X_test)
 
-        # Check mean shape (flattened output-major: [NP])
+        # Check mean shape (flattened interleaved, index n·P + p: [NP])
         assert pred.mean.shape == (N_test * P,)
         assert jnp.all(jnp.isfinite(pred.mean))
 

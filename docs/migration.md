@@ -202,7 +202,8 @@ latent_pred = latent(X[:5])                  # was: predict(x, train_data=...)
 
 For this multi-output process `covariance="dense"` returns the joint
 `(NP, NP)` covariance across test inputs *and* outputs, flattened
-output-major, where single-output processes return `(N, N)`.
+interleaved (input-major, index n·P + p), where single-output processes
+return `(N, N)`.
 
 `HeteroscedasticVariationalFamily` is the exception: it approximates two
 latent processes, so it has no single conditioned process and its
