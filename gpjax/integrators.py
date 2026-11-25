@@ -71,12 +71,11 @@ class AbstractIntegrator:
                 distribution.
             likelihood (AbstractLikelihood): The likelihood function.
             key (KeyArray | None): The random key. Only integrators that draw
-                samples, such as :class:`MonteCarloIntegrator`, use it; the
-                deterministic integrators do not take it.
+                samples, such as :class:`MonteCarloIntegrator`, use it; a
+                deterministic integrator ignores it.
         """
-        if key is None:
-            return self.integrate(fun, y, mean, variance, likelihood)
-        return self.integrate(fun, y, mean, variance, likelihood, key=key)
+        del key
+        return self.integrate(fun, y, mean, variance, likelihood)
 
     def __eq__(self, other: object) -> bool:
         r"""Compare two integrators by their type and their settings.
@@ -130,7 +129,7 @@ class GHQuadratureIntegrator(AbstractIntegrator):
     def integrate(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
         likelihood: L | None,
@@ -147,6 +146,11 @@ class GHQuadratureIntegrator(AbstractIntegrator):
         Returns:
             The expected log likelihood as an array of shape (N,).
         """
+        if mean.shape[1] > 1:
+            raise ValueError(
+                "GHQuadratureIntegrator supports one latent function only, but "
+                f"the mean has {mean.shape[1]} columns. Use MonteCarloIntegrator."
+            )
         gh_points, gh_weights = np.polynomial.hermite.hermgauss(self.num_points)
         sd = jnp.sqrt(variance)
         X = mean + jnp.sqrt(2.0) * sd * gh_points
@@ -183,6 +187,22 @@ class MonteCarloIntegrator(AbstractIntegrator):
                 data point. Defaults to 100.
         """
         self.num_samples = num_samples
+
+    def __call__(
+        self,
+        fun: tp.Callable,
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N D"],
+        variance: Float[Array, "N D"],
+        likelihood: L | None,
+        key: KeyArray | None = None,
+    ) -> Float[Array, " N"]:
+        r"""Estimate the integral from samples drawn with ``key``.
+
+        See :meth:`AbstractIntegrator.__call__`. Unlike the deterministic
+        integrators, this integrator passes ``key`` on to :meth:`integrate`.
+        """
+        return self.integrate(fun, y, mean, variance, likelihood, key=key)
 
     def integrate(
         self,

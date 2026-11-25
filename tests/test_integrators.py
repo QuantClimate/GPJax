@@ -215,3 +215,27 @@ def test_monte_carlo_without_a_key_raises():
 def test_monte_carlo_integrators_with_equal_settings_are_equal():
     assert MonteCarloIntegrator(num_samples=10) == MonteCarloIntegrator(num_samples=10)
     assert MonteCarloIntegrator(num_samples=10) != MonteCarloIntegrator(num_samples=20)
+
+
+@pytest.mark.parametrize(
+    "likelihood",
+    [Bernoulli(), Gaussian(obs_stddev=jnp.array([0.5]))],
+    ids=["quadrature", "analytical"],
+)
+def test_deterministic_integrators_ignore_a_supplied_key(likelihood):
+    # The objective can pass a key whatever the likelihood; a deterministic
+    # integrator gives the same value with and without it.
+    y, mu, variance = jnp.array([[1.0]]), jnp.array([[0.3]]), jnp.array([[0.7]])
+    without_key = likelihood.expected_log_likelihood(y, mu, variance)
+    with_key = likelihood.expected_log_likelihood(
+        y, mu, variance, key=jax.random.key(0)
+    )
+    np.testing.assert_array_equal(with_key, without_key)
+
+
+def test_quadrature_with_more_than_one_latent_function_raises():
+    likelihood = Categorical(num_classes=3, integrator=GHQuadratureIntegrator())
+    with pytest.raises(ValueError, match="MonteCarloIntegrator"):
+        likelihood.expected_log_likelihood(
+            jnp.zeros((2, 1)), jnp.zeros((2, 3)), jnp.ones((2, 3))
+        )

@@ -34,7 +34,7 @@ L-BFGS works.
 ## Key splitting
 
 - The integrator draws all standard-normal samples for one evaluation in one
-  call of shape (S, N, C) from the key it gets. Thus the samples are
+  call of shape (N, S, C) from the key it gets. Thus the samples are
   independent across samples, data points and classes, and no key is used
   for two draws.
 - A likelihood that needs more than one draw splits its key first. The GEV

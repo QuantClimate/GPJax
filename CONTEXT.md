@@ -85,8 +85,9 @@ second implementation. `model.predict(x, D)` and `model(x, D)` are sugar for
 
 **objective** — a scalar function `(model, Dataset) -> ScalarFloat` consumed
 by `gpx.fit`. An objective that uses Monte Carlo also takes an optional
-keyword `key`; the user supplies it (see ADR-0002). Objectives are thin: `conjugate_mll` is the evidence view of
-the conditioned posterior, not a second derivation.
+keyword `key`; the user supplies it (see ADR-0002). Objectives are thin:
+`conjugate_mll` is the evidence view of the conditioned posterior, not a
+second derivation.
 
 **Dataset** — the data container. `n_total` records the full-dataset size
 when the object is a minibatch view (stamped by `get_batch`); the minibatch

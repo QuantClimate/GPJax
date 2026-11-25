@@ -284,3 +284,19 @@ def test_fit_separates_three_classes():
     probs = model.likelihood.predict(fitted.condition(data)(x)).probs
     accuracy = jnp.mean(jnp.argmax(probs, axis=1) == labels)
     assert accuracy > 0.9
+
+
+def test_fit_natgrads_rejects_more_than_one_latent_function():
+    import gpjax as gpx
+    import optax as ox
+
+    family, *_ = _whitened_family()
+    with pytest.raises(ValueError, match="one latent function"):
+        gpx.fit_natgrads(
+            model=family,
+            objective=lambda q, d: -gpx.objectives.elbo(q, d, key=jax.random.key(0)),
+            train_data=_three_class_data(),
+            optim=ox.adam(0.01),
+            num_iters=2,
+            verbose=False,
+        )
