@@ -18,9 +18,11 @@ import equinox as eqx
 from gpjax.integrators import (
     AnalyticalGaussianIntegrator,
     GHQuadratureIntegrator,
+    MonteCarloIntegrator,
 )
 from gpjax.likelihoods import (
     Bernoulli,
+    Categorical,
     Gaussian,
     HeteroscedasticGEV,
 )
@@ -142,3 +144,74 @@ def test_likelihoods_with_equal_integrators_are_equal_pytrees(build):
     traced(first)
     traced(second)
     assert trace_count == 1
+
+
+# --- Monte Carlo integration ---
+
+
+@pytest.mark.parametrize("jit", [True, False])
+def test_monte_carlo_matches_the_closed_form_gaussian_value(jit: bool):
+    # E[log N(y | f, 1)] with f ~ N(0, 1) and y = 1 is -1.91893853 (closed form).
+    likelihood = Gaussian(
+        obs_stddev=jnp.array([1.0]),
+        integrator=MonteCarloIntegrator(num_samples=20_000),
+    )
+    y, mu, variance = jnp.array([[1.0]]), jnp.array([[0.0]]), jnp.array([[1.0]])
+
+    def _ell(lik, key):
+        return lik.expected_log_likelihood(y, mu, variance, key=key)
+
+    ell = (jax.jit(_ell) if jit else _ell)(likelihood, jax.random.key(0))
+    assert ell.shape == (1,)
+    np.testing.assert_allclose(ell, -1.91893853, atol=0.04)
+
+
+def test_monte_carlo_two_class_softmax_matches_one_dimensional_quadrature():
+    # With two classes, log softmax(f)_1 = log sigmoid(f_1 - f_0), and
+    # f_1 - f_0 ~ N(mu_1 - mu_0, v_0 + v_1): a 1-D Gauss-Hermite integral.
+    mean = jnp.array([[0.3, -0.5], [1.0, 2.0]])
+    variance = jnp.array([[0.4, 0.9], [1.5, 0.2]])
+    y = jnp.array([[1.0], [0.0]])
+    likelihood = Categorical(
+        num_classes=2, integrator=MonteCarloIntegrator(num_samples=20_000)
+    )
+    ell = likelihood.expected_log_likelihood(y, mean, variance, key=jax.random.key(1))
+
+    points, weights = np.polynomial.hermite.hermgauss(60)
+    expected = []
+    for n in range(2):
+        label = int(y[n, 0])
+        other = 1 - label
+        loc = float(mean[n, label] - mean[n, other])
+        sd = float(np.sqrt(variance[n, 0] + variance[n, 1]))
+        d = loc + np.sqrt(2.0) * sd * points
+        expected.append(np.sum(weights * -np.logaddexp(0.0, -d)) / np.sqrt(np.pi))
+    assert ell.shape == (2,)
+    np.testing.assert_allclose(ell, np.array(expected), atol=0.02)
+
+
+def test_monte_carlo_is_deterministic_for_a_fixed_key():
+    likelihood = Categorical(num_classes=3, integrator=MonteCarloIntegrator())
+    mean = jnp.zeros((4, 3))
+    variance = jnp.ones((4, 3))
+    y = jnp.array([[0.0], [1.0], [2.0], [1.0]])
+    first = likelihood.expected_log_likelihood(y, mean, variance, key=jax.random.key(3))
+    second = likelihood.expected_log_likelihood(
+        y, mean, variance, key=jax.random.key(3)
+    )
+    other = likelihood.expected_log_likelihood(y, mean, variance, key=jax.random.key(4))
+    np.testing.assert_array_equal(first, second)
+    assert not np.allclose(first, other)
+
+
+def test_monte_carlo_without_a_key_raises():
+    likelihood = Categorical(num_classes=3, integrator=MonteCarloIntegrator())
+    with pytest.raises(ValueError, match="key="):
+        likelihood.expected_log_likelihood(
+            jnp.zeros((2, 1)), jnp.zeros((2, 3)), jnp.ones((2, 3))
+        )
+
+
+def test_monte_carlo_integrators_with_equal_settings_are_equal():
+    assert MonteCarloIntegrator(num_samples=10) == MonteCarloIntegrator(num_samples=10)
+    assert MonteCarloIntegrator(num_samples=10) != MonteCarloIntegrator(num_samples=20)

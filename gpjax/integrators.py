@@ -2,11 +2,15 @@ import abc
 import typing as tp
 
 import jax.numpy as jnp
+import jax.random as jr
 from jaxtyping import Float
 import numpy as np
 
 from gpjax.parameters import val
-from gpjax.typing import Array
+from gpjax.typing import (
+    Array,
+    KeyArray,
+)
 
 if tp.TYPE_CHECKING:
     from gpjax.likelihoods import (
@@ -48,10 +52,11 @@ class AbstractIntegrator:
     def __call__(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
         likelihood: L | None,
+        key: KeyArray | None = None,
     ) -> Float[Array, " N"]:
         r"""Integrate a function with respect to a Gaussian distribution.
 
@@ -60,13 +65,18 @@ class AbstractIntegrator:
 
         Args:
             fun (Callable): The function to be integrated.
-            y (Float[Array, 'N D']): The observed response variable.
+            y (Float[Array, 'N Q']): The observed response variable.
             mean (Float[Array, 'N D']): The mean of the variational distribution.
             variance (Float[Array, 'N D']): The variance of the variational
                 distribution.
             likelihood (AbstractLikelihood): The likelihood function.
+            key (KeyArray | None): The random key. Only integrators that draw
+                samples, such as :class:`MonteCarloIntegrator`, use it; the
+                deterministic integrators do not take it.
         """
-        return self.integrate(fun, y, mean, variance, likelihood)
+        if key is None:
+            return self.integrate(fun, y, mean, variance, likelihood)
+        return self.integrate(fun, y, mean, variance, likelihood, key=key)
 
     def __eq__(self, other: object) -> bool:
         r"""Compare two integrators by their type and their settings.
@@ -145,6 +155,76 @@ class GHQuadratureIntegrator(AbstractIntegrator):
         return expectation
 
 
+class MonteCarloIntegrator(AbstractIntegrator):
+    r"""Compute an integral by Monte Carlo sampling.
+
+    For independent Gaussians $f_{nd} \sim \mathcal{N}(m_{nd}, s_{nd})$ over
+    $D$ latent functions, the expectation is estimated from $S$ samples,
+
+    $$
+    \mathbb{E}_{q(f_n)}\left[F(f_n)\right] \approx \frac{1}{S}
+        \sum_{s=1}^{S} F\left(m_n + \sqrt{s_n} \odot \epsilon_{ns}\right),
+    \qquad \epsilon_{ns} \sim \mathcal{N}(0, I_D).
+    $$
+
+    Use it when the likelihood has more than one latent function, for which
+    Gauss-Hermite quadrature needs $J^D$ points. The caller supplies the random
+    key, through ``elbo(q, data, key=key)``. All standard-normal draws for one
+    evaluation come from one call with that key, of shape $(N, S, D)$, so the
+    draws are independent across data points, samples and latent functions.
+    The same key gives the same estimate.
+    """
+
+    def __init__(self, num_samples: int = 100):
+        r"""Initialise the integrator.
+
+        Args:
+            num_samples (int, optional): The number of samples $S$ for each
+                data point. Defaults to 100.
+        """
+        self.num_samples = num_samples
+
+    def integrate(
+        self,
+        fun: tp.Callable,
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N D"],
+        variance: Float[Array, "N D"],
+        likelihood: L | None,
+        key: KeyArray | None = None,
+    ) -> Float[Array, " N"]:
+        r"""Compute a Monte Carlo integral.
+
+        Args:
+            fun: The function to integrate, called as ``fun(samples, y)`` with
+                ``samples`` of shape ``(N, S)`` for one latent function or
+                ``(N, S, D)`` for more than one.
+            y: The observed response variable.
+            mean: The mean of the variational distribution.
+            variance: The variance of the variational distribution.
+            likelihood: The likelihood function.
+            key: The random key for the standard-normal draws.
+
+        Returns:
+            The expected log likelihood as an array of shape (N,).
+
+        Raises:
+            ValueError: If ``key`` is ``None``.
+        """
+        if key is None:
+            raise ValueError(
+                "MonteCarloIntegrator needs a random key: pass `key=` to `elbo`."
+            )
+        num_points, num_latent = mean.shape
+        noise = jr.normal(
+            key, (num_points, self.num_samples, num_latent), dtype=mean.dtype
+        )
+        samples = mean[:, None, :] + jnp.sqrt(variance)[:, None, :] * noise
+        if num_latent == 1:
+            samples = samples[..., 0]
+        return jnp.mean(fun(samples, y), axis=1)
+
+
 class AnalyticalGaussianIntegrator(AbstractIntegrator):
     r"""Compute the analytical integral of a Gaussian likelihood.
 
@@ -192,4 +272,5 @@ __all__ = [
     "AbstractIntegrator",
     "AnalyticalGaussianIntegrator",
     "GHQuadratureIntegrator",
+    "MonteCarloIntegrator",
 ]

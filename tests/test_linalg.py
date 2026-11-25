@@ -324,3 +324,20 @@ def test_stabilised_cholesky_reconstructs():
     psd = root @ root.T
     factor = stabilised_cholesky(psd, 1e-3)
     assert jnp.allclose(factor @ factor.T, psd + 1e-3 * jnp.eye(2), atol=1e-10)
+
+
+# --- lx.diagonal on the custom operators ---
+
+
+def test_block_diag_diagonal_matches_dense():
+    A = lx.MatrixLinearOperator(jnp.array([[4.0, 1.0], [1.0, 3.0]]))
+    B = lx.DiagonalLinearOperator(jnp.array([5.0, 6.0, 7.0]))
+    op = BlockDiag([A, B])
+    assert jnp.allclose(lx.diagonal(op), jnp.array([4.0, 3.0, 5.0, 6.0, 7.0]))
+
+
+def test_kronecker_diagonal_matches_dense():
+    A = lx.MatrixLinearOperator(jnp.array([[2.0, 1.0], [1.0, 3.0]]))
+    B = lx.MatrixLinearOperator(jnp.array([[5.0, 0.5], [0.5, 7.0]]))
+    op = Kronecker(A, B)
+    assert jnp.allclose(lx.diagonal(op), jnp.array([10.0, 14.0, 15.0, 21.0]))

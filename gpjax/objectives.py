@@ -15,6 +15,7 @@ from gpjax.likelihoods import (
 )
 from gpjax.typing import (
     Array,
+    KeyArray,
     ScalarFloat,
 )
 from gpjax.variational_families import (
@@ -201,7 +202,12 @@ def log_posterior_density(model: NonConjugateModel, data: Dataset) -> ScalarFloa
 non_conjugate_mll = log_posterior_density
 
 
-def elbo(variational_family: VF, data: Dataset) -> ScalarFloat:
+def elbo(
+    variational_family: VF,
+    data: Dataset,
+    *,
+    key: KeyArray | None = None,
+) -> ScalarFloat:
     r"""Compute the evidence lower bound of a variational approximation.
 
     Compute the evidence lower bound under this model. In short, this requires
@@ -231,12 +237,24 @@ def elbo(variational_family: VF, data: Dataset) -> ScalarFloat:
 
         >>> gpx.objectives.elbo(q, D)
 
+    A likelihood whose integrator draws samples, such as ``Categorical`` with
+    its default ``MonteCarloIntegrator``, needs a random key. Split it from
+    every other key in the run and close over it, so that the samples are the
+    same at each optimisation step:
+
+    .. code-block:: python
+
+        key, fit_key, elbo_key = jr.split(key, 3)
+        objective = lambda q, d: -gpx.objectives.elbo(q, d, key=elbo_key)
+
     Args:
         variational_family: The variational
             approximation for whose parameters we should maximise the ELBO with
             respect to.
         data: The training data for which we should maximise the
             ELBO with respect to.
+        key: The random key for a likelihood whose integrator draws samples.
+            Deterministic integrators ignore it. See ADR-0002.
 
     Returns:
         ScalarFloat: The evidence lower bound of the variational approximation.
@@ -245,7 +263,7 @@ def elbo(variational_family: VF, data: Dataset) -> ScalarFloat:
     kl = variational_family.prior_kl()
 
     # int[log(p(y|f(.))) q(f(.))] df(.)
-    var_exp = variational_expectation(variational_family, data)
+    var_exp = variational_expectation(variational_family, data, key=key)
 
     # For batch size b, we compute  n/b * sum_i[ int log(p(y|f(xi))) q(f(xi)) df(xi)] - KL[q(f(.)) || p(f(.))]
     return jnp.sum(var_exp) * data.full_size / data.n - kl
@@ -254,6 +272,8 @@ def elbo(variational_family: VF, data: Dataset) -> ScalarFloat:
 def variational_expectation(
     variational_family: VF,
     data: Dataset,
+    *,
+    key: KeyArray | None = None,
 ) -> Float[Array, " N"]:
     r"""Compute the variational expectation.
 
@@ -285,6 +305,8 @@ def variational_expectation(
         variational_family: The variational family that we
             are using to approximate the posterior.
         data: The batch for which the expectation should be computed for.
+        key: The random key for a likelihood whose integrator draws samples.
+            The key is used once, by the integrator.
 
     Returns:
         Array: The expectation of the model's log-likelihood under our
@@ -301,10 +323,16 @@ def variational_expectation(
     # for interface uniformity; the sparse families carry q(u) internally and
     # ignore it.
     qx = q.condition(data)(x, covariance="diagonal")
-    mean, variance = qx.mean[:, None], qx.variance[:, None]
+
+    # The moments are flattened in blocked order (index l N + n); one column
+    # for each latent function of the likelihood.
+    likelihood = q.model.likelihood
+    num_latent = likelihood.num_latent_functions
+    mean = qx.mean.reshape(num_latent, -1).T
+    variance = qx.variance.reshape(num_latent, -1).T
 
     # approx int[log(p(y|f(x))) q(f(x))] df(x)
-    expectation = q.model.likelihood.expected_log_likelihood(y, mean, variance)
+    expectation = likelihood.expected_log_likelihood(y, mean, variance, key=key)
     return expectation
 
 

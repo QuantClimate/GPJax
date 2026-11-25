@@ -23,6 +23,11 @@ Owns the model's single numerical-stabilisation knob, `jitter`.
 it holds no priors, no dataset facts, and no data sizes. (Both were tried and
 removed at v1.0 — see ADR-0001.)
 
+**Categorical likelihood** — the multi-class classification likelihood
+p(y = c | f) = softmax(f)_c, with one latent function f_c per class and C
+classes. A label is the class index c ∈ {0, …, C − 1}. The number of classes
+C is the one structural fact it holds; it holds no other state.
+
 **JointModel** — the joint distribution p(f, y) = p(y | f) · p(f), created by
 `prior * likelihood`. The *trainable* object: `gpx.fit` optimises its
 hyperparameters. It carries state that must exist before conditioning
@@ -79,7 +84,8 @@ second implementation. `model.predict(x, D)` and `model(x, D)` are sugar for
 `model.condition(D)(x)`; `model | D` is sugar for `model.condition(D)`.
 
 **objective** — a scalar function `(model, Dataset) -> ScalarFloat` consumed
-by `gpx.fit`. Objectives are thin: `conjugate_mll` is the evidence view of
+by `gpx.fit`. An objective that uses Monte Carlo also takes an optional
+keyword `key`; the user supplies it (see ADR-0002). Objectives are thin: `conjugate_mll` is the evidence view of
 the conditioned posterior, not a second derivation.
 
 **Dataset** — the data container. `n_total` records the full-dataset size
