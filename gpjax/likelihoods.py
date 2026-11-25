@@ -443,7 +443,7 @@ class MultiOutputGaussian(Gaussian):
         self.num_outputs = num_outputs
 
     def noise_vector(self, n: int) -> Float[Array, " NP"]:
-        """Per-observation noise variance in output-major (Kronecker) order.
+        """Per-observation noise variance in blocked (Kronecker) order.
 
         Returns sigma_p^2 with each output's variance repeated N times,
         concatenated across outputs: [sigma_1^2...sigma_1^2, sigma_2^2...sigma_2^2, ...].
@@ -454,7 +454,7 @@ class MultiOutputGaussian(Gaussian):
     def prepare_targets(
         self, y: Float[Array, "N P"], mx: Float[Array, "N 1"]
     ) -> tuple[Float[Array, "NP 1"], Float[Array, "NP 1"]]:
-        """Reshape multi-output targets to output-major long format."""
+        """Reshape multi-output targets to a long format in blocked order."""
         P = self.num_outputs
         y_flat = y.T.reshape(-1, 1)  # [N, P] -> [NP, 1]
         mx_flat = jnp.tile(mx, (P, 1))  # [N, 1] -> [NP, 1]

@@ -10,15 +10,16 @@ the full history.
 
 ## 1.2.x → 1.3.0
 
-GPJax `1.3` adds features. One change can affect existing code: the OILMM
-predictive is now in blocked order, the order that `ICMKernel`, `LCMKernel` and
-the `Categorical` likelihood already use.
+GPJax `1.3` adds features and one fix that can change the results of existing
+code. The OILMM predictive is now in blocked order. `ICMKernel`, `LCMKernel`
+and the `Categorical` likelihood already use this order.
 
-- `OILMMPosterior(test_inputs)` and `OILMMModel.predict` return the `N · P`
-  values with index `p · N + n`: all `N` test inputs of output 0 first, then
-  output 1, and so on. Before, the index was `n · P + p`: all `P` outputs of
-  test input 0 first. The shape `(N · P,)` does not change, so old code gives
-  wrong numbers without an error.
+- `OILMMPosterior(test_inputs)` and `OILMMPosterior.predict` return `N · P`
+  values with index p·N + n. The `N` test inputs of output 0 come first, then
+  those of output 1, and so on.
+- Before, the index was n·P + p: the `P` outputs of test input 0 came first.
+- The shape `(N · P,)` does not change. Thus old code gives wrong numbers and
+  no error.
 - The dense covariance and the marginal variances use the same order as the
   mean.
 - To get an `(N, P)` array, replace `pred.mean.reshape(N, P)` with
@@ -229,9 +230,8 @@ latent_pred = latent(X[:5])                  # was: predict(x, train_data=...)
 
 For this multi-output process `covariance="dense"` returns the joint
 `(NP, NP)` covariance across test inputs *and* outputs, where single-output
-processes return `(N, N)`. In `1.0` to `1.2` the values are in input-major
-order (index `n · P + p`); from `1.3.0` they are in blocked order (index
-`p · N + n`).
+processes return `(N, N)`. In `1.0` to `1.2`, the index of the values is
+n·P + p. From `1.3.0`, the values are in blocked order, with index p·N + n.
 
 `HeteroscedasticVariationalFamily` is the exception: it approximates two
 latent processes, so it has no single conditioned process and its

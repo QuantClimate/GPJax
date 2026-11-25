@@ -22,13 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `elbo(q, data, key=key)` (see ADR-0002). `lx.diagonal` now works on
   `BlockDiag`.
 
-### Changed
+### Fixed
 
 - **The OILMM predictive is in blocked order.** `OILMMPosterior` returns its
-  mean, dense covariance and marginal variances with index p·N + n (all test
-  inputs of output 0 first), the order of `ICMKernel`, `LCMKernel` and
-  `Categorical`. Before, the index was n·P + p, and the docstring wrongly
-  called that order output-major. The shape does not change: replace
+  mean, dense covariance and marginal variances with index p·N + n. Thus the
+  test inputs of output 0 come first. `ICMKernel`, `LCMKernel` and
+  `Categorical` use the same order. Before, the index was n·P + p, although
+  the docstring said "output-major". The shape does not change: replace
   `pred.mean.reshape(N, P)` with `pred.mean.reshape(P, N).T` (see
   `docs/migration.md`).
 

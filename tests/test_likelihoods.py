@@ -171,7 +171,7 @@ class TestMultiOutputGaussian:
         assert jnp.allclose(lik.obs_stddev.unwrap(), noise)
 
     def test_noise_vector_shape(self):
-        """noise_vector() returns [NP] in output-major order."""
+        """noise_vector() returns [NP] in blocked order."""
         from gpjax.likelihoods import MultiOutputGaussian
 
         lik = MultiOutputGaussian(num_outputs=3, obs_stddev=1.0)
@@ -179,13 +179,13 @@ class TestMultiOutputGaussian:
         assert nv.shape == (30,)
 
     def test_noise_vector_ordering(self):
-        """noise_vector() repeats per-output variance in output-major order."""
+        """noise_vector() repeats per-output variance in blocked order."""
         from gpjax.likelihoods import MultiOutputGaussian
 
         noise = jnp.array([1.0, 2.0])
         lik = MultiOutputGaussian(num_outputs=2, obs_stddev=noise)
         nv = lik.noise_vector(3)
-        # Output-major: [σ₁² repeated N, σ₂² repeated N]
+        # Blocked order: [σ₁² repeated N, σ₂² repeated N]
         expected = jnp.array([1.0, 1.0, 1.0, 4.0, 4.0, 4.0])
         assert jnp.allclose(nv, expected)
 

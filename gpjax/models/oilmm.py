@@ -421,11 +421,11 @@ class OILMMPosterior(Posterior):
         space: the mean as :math:`H \mu`, and the covariance as
         :math:`(H \otimes I) \Sigma (H \otimes I)^{\top}`.
 
-        The predictive is over :math:`NP` values in blocked order: index
-        :math:`pN + n` holds output :math:`p` at test input :math:`n`, so all
-        :math:`N` values of output 0 come first. ``ICMKernel``, ``LCMKernel``
-        and the ``Categorical`` likelihood use the same order. Read the
-        ``(N, P)`` mean with ``mean.reshape(P, N).T``.
+        The distribution holds :math:`NP` values in blocked order. Index
+        :math:`p \cdot N + n` holds output :math:`p` at test input :math:`n`,
+        so the :math:`N` values of output 0 come first. ``ICMKernel``,
+        ``LCMKernel`` and the ``Categorical`` likelihood use the same order. To
+        get the mean as an ``(N, P)`` array, use ``mean.reshape(P, N).T``.
 
         For this multi-output process ``covariance="dense"`` returns the joint
         :math:`(NP, NP)` covariance across both test inputs and outputs, in the
@@ -448,7 +448,7 @@ class OILMMPosterior(Posterior):
 
         Returns:
             GaussianDistribution: The predictive distribution, with ``loc`` of
-            shape ``(NP,)`` in blocked order (index :math:`pN + n`).
+            shape ``(NP,)`` in blocked order (index :math:`p \cdot N + n`).
         """
         num_test = test_inputs.shape[0]
         mixing = self.mixing_matrix.H  # [P, M]
@@ -514,6 +514,7 @@ class OILMMPosterior(Posterior):
         r"""Sugar for calling the posterior: ``predict(t) == self(t)``.
 
         Defaults to ``covariance="diagonal"``: see :meth:`__call__` for why.
+        The values are in blocked order, as :meth:`__call__` describes.
 
         Args:
             test_inputs: Input locations of shape ``(N, D)``.
@@ -525,7 +526,8 @@ class OILMMPosterior(Posterior):
                 and ``False`` to ``covariance="diagonal"``.
 
         Returns:
-            GaussianDistribution: The predictive distribution at the inputs.
+            GaussianDistribution: The predictive distribution at the inputs,
+            in blocked order (index :math:`p \cdot N + n`).
         """
         del train_data
         if return_full_cov is not None:
