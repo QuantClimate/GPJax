@@ -441,11 +441,17 @@ test_time_hours = jnp.linspace(
 )
 X_test = ((test_time_hours - input_mean) / input_std).reshape(-1, 1)
 
+
+# The prediction holds all outputs at all test inputs, in blocked order: the
+# N_test values of output 0 come first, then those of output 1, and so on.
+def values_per_output(values):
+    """Arrange values in blocked order as an array of shape (N_test, num_outputs)."""
+    return values.reshape(num_outputs, N_test).T
+
+
 pre_pred = posterior.predict(X_test, covariance="diagonal")
-pre_opt_mean_standardised = pre_pred.mean.reshape(N_test, num_outputs)
-pre_opt_std_standardised = jnp.sqrt(jnp.diag(pre_pred.covariance())).reshape(
-    N_test, num_outputs
-)
+pre_opt_mean_standardised = values_per_output(pre_pred.mean)
+pre_opt_std_standardised = values_per_output(jnp.sqrt(pre_pred.variance))
 pre_obs_noise_var = (
     model.mixing_matrix.obs_noise_variance.unwrap()
     + model.mixing_matrix.H_squared @ model.mixing_matrix.latent_noise_variance.unwrap()
@@ -550,10 +556,8 @@ print(f"Optimised MLL: {opt_mll:.3f}")
 # %%
 opt_posterior = opt_model.condition(train_data)
 post_pred = opt_posterior.predict(X_test, covariance="diagonal")
-post_opt_mean_standardised = post_pred.mean.reshape(N_test, num_outputs)
-post_opt_std_standardised = jnp.sqrt(jnp.diag(post_pred.covariance())).reshape(
-    N_test, num_outputs
-)
+post_opt_mean_standardised = values_per_output(post_pred.mean)
+post_opt_std_standardised = values_per_output(jnp.sqrt(post_pred.variance))
 post_obs_noise_var = (
     opt_model.mixing_matrix.obs_noise_variance.unwrap()
     + opt_model.mixing_matrix.H_squared

@@ -627,7 +627,7 @@ class TestMultiOutputPosteriorPredict:
         """At training points, posterior mean is close to training data."""
         posterior, data, N, P = mo_setup
         pred = posterior.predict(data.X, data)
-        # Mean is output-major [NP], reshape to [P, N] then transpose to [N, P]
+        # Mean is in blocked order [NP], reshape to [P, N] then transpose to [N, P]
         mean_reshaped = pred.mean.reshape(P, N).T
         residual = jnp.abs(mean_reshaped - data.y)
         assert jnp.mean(residual) < 1.0  # Loose bound

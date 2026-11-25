@@ -51,7 +51,7 @@ __license__ = "MIT"
 __description__ = "Gaussian processes in JAX"
 __url__ = "https://github.com/QuantClimate/GPJax"
 __contributors__ = "https://github.com/QuantClimate/GPJax/graphs/contributors"
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     "ConjugateModel",

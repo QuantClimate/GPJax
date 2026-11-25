@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-25
+
 ### Added
 
 - **Multi-class classification.** `likelihoods.Categorical(num_classes=C)` gives
@@ -21,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   log likelihood; it needs a random key, which you give as
   `elbo(q, data, key=key)` (see ADR-0002). `lx.diagonal` now works on
   `BlockDiag`.
+
+### Fixed
+
+- **The OILMM predictive is in blocked order.** `OILMMPosterior` returns its
+  mean, dense covariance and marginal variances with index p·N + n. Thus the
+  test inputs of output 0 come first. `ICMKernel`, `LCMKernel` and
+  `Categorical` use the same order. Before, the index was n·P + p, although
+  the docstring said "output-major". The shape does not change: replace
+  `pred.mean.reshape(N, P)` with `pred.mean.reshape(P, N).T` (see
+  `docs/migration.md`).
 
 ## [1.2.0] — 2026-11-25
 

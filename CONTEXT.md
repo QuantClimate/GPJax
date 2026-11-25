@@ -28,10 +28,12 @@ likelihood has L latent functions; every likelihood has L = 1 except the
 Categorical likelihood, which has one for each class (L = C). The L latent
 functions are independent and share one kernel and one mean function.
 
-**blocked order** — the order of the N · L values of L latent functions at N
-inputs in one flat vector: all N values of latent function 0, then all N of
-latent function 1, and so on (index l · N + n). A posterior returns its
-predictive over L > 1 latent functions in this order.
+**blocked order** — the order of the N · L values of L latent functions or
+outputs at N inputs in one flat vector: all N values of latent function (or
+output) 0, then all N of latent function 1, and so on (index l · N + n). Every
+predictive over more than one latent function or output uses this order: the
+`Categorical` likelihood, `ICMKernel`, `LCMKernel` and OILMM. Get an (N, L)
+array with `values.reshape(L, N).T`.
 
 **Categorical likelihood** — the multi-class classification likelihood
 p(y = c | f) = softmax(f)_c, with one latent function f_c per class and C
