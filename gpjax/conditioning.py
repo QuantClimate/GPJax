@@ -32,7 +32,6 @@ from typing import Literal
 import warnings
 
 import equinox as eqx
-import jax
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy as jsp
@@ -46,10 +45,7 @@ import numpyro.distributions as npd
 from gpjax.dataset import Dataset
 from gpjax.distributions import GaussianDistribution
 from gpjax.kernels import RFF
-from gpjax.linalg.custom_operators import (
-    BlockDiag,
-    Kronecker,
-)
+from gpjax.linalg.custom_operators import BlockDiag
 from gpjax.linalg.utils import stabilised_cholesky
 from gpjax.parameters import val
 from gpjax.typing import (
@@ -129,36 +125,37 @@ def _assemble_predictive(
     return GaussianDistribution(loc=jnp.atleast_1d(mean.squeeze()), scale=scale)
 
 
-def _stack_shared_predictive(
-    mean: Float[Array, "N L"],
-    predictive: GaussianDistribution,
+def _stack_predictives(
+    predictives: list[GaussianDistribution],
     *,
     covariance: Literal["dense", "diagonal"],
 ) -> GaussianDistribution:
-    r"""Stack ``L`` independent latent functions that share one covariance.
+    r"""Join the predictives of ``L`` independent latent functions.
 
-    The result is flattened in blocked order, index :math:`l N + n`. Its
-    covariance is :math:`I_L \otimes \Sigma`, where :math:`\Sigma` is the
-    covariance of ``predictive``; the dense form stores :math:`\Sigma` once.
+    The joint mean is flattened in blocked order: index :math:`l N + n` holds
+    latent function :math:`l` at test input :math:`n`. The latent functions
+    are independent, so the joint covariance is block diagonal, with one
+    :math:`N \times N` block for each latent function.
 
     Args:
-        mean: The predictive mean of each latent function, of shape ``(N, L)``.
-        predictive: The predictive distribution of one latent function.
-        covariance: Whether ``predictive`` holds a dense covariance or only the
+        predictives: The predictive of each latent function, over the same
+            ``N`` test inputs.
+        covariance: Whether the predictives hold dense covariances or only the
             marginal variances.
 
     Returns:
-        GaussianDistribution: The joint predictive over ``N * L`` values.
+        GaussianDistribution: The joint predictive over ``N * L`` values. With
+            one latent function, this is ``predictives[0]``.
     """
-    num_latent = mean.shape[1]
-    loc = mean.T.reshape(-1)
+    if len(predictives) == 1:
+        return predictives[0]
+    loc = jnp.concatenate([predictive.mean for predictive in predictives])
     if covariance == "dense":
-        identity = lx.IdentityLinearOperator(
-            jax.ShapeDtypeStruct((num_latent,), loc.dtype)
-        )
-        scale = Kronecker(identity, predictive.scale)
+        scale = BlockDiag([predictive.scale for predictive in predictives])
     else:
-        scale = lx.DiagonalLinearOperator(jnp.tile(predictive.variance, num_latent))
+        scale = lx.DiagonalLinearOperator(
+            jnp.concatenate([predictive.variance for predictive in predictives])
+        )
     return GaussianDistribution(loc=loc, scale=scale)
 
 
@@ -439,17 +436,18 @@ class LatentPosterior(Posterior):
 
         # The latent functions share one kernel, so they share one predictive
         # covariance. Build it once, from the first latent column.
-        predictive = _assemble_predictive(
+        shared = _assemble_predictive(
             mean[:, :1],
             _prior_covariance(kernel, test_inputs, covariance),
             covariance=covariance,
             subtracted_factor=solved_cross,
             jitter=self.prior.jitter,
         )
-        num_latent = mean.shape[1]
-        if num_latent == 1:
-            return predictive
-        return _stack_shared_predictive(mean, predictive, covariance=covariance)
+        predictives = [
+            GaussianDistribution(loc=mean[:, index], scale=shared.scale)
+            for index in range(mean.shape[1])
+        ]
+        return _stack_predictives(predictives, covariance=covariance)
 
     @property
     def log_posterior_density(self) -> ScalarFloat:
@@ -564,15 +562,10 @@ class SparsePosterior(Posterior):
             cholesky_kzz, cross_cov, lower=True
         )
 
-        if self.whitened and self.variational_mean.shape[1] > 1:
-            return self._stacked_whitened_predictive(
-                test_mean, prior_cov, projected_cross, covariance=covariance
-            )
-
         if self.whitened:
             # q(u) = N(m(z) + Lz mu, Lz S Lz^T): mean = m(t) + A^T mu.
             mean = test_mean + jnp.matmul(projected_cross.T, self.variational_mean)
-            root_term = jnp.matmul(self.variational_root.T, projected_cross)
+            root_factor = projected_cross
         else:
             # q(u) = N(mu, S): mean = m(t) + Ktz Kzz^{-1} (mu - m(z)).
             inducing_mean = mean_function(inducing_inputs)
@@ -580,60 +573,30 @@ class SparsePosterior(Posterior):
                 cholesky_kzz, self.variational_mean - inducing_mean, lower=True
             )
             mean = test_mean + jnp.matmul(projected_cross.T, centred_mean)
-            kzz_inv_cross = jsp.linalg.solve_triangular(
+            root_factor = jsp.linalg.solve_triangular(
                 cholesky_kzz.T, projected_cross, lower=False
             )
-            root_term = jnp.matmul(self.variational_root.T, kzz_inv_cross)
 
-        # Ktt - A^T A + root^T root  [the S-term, S = sqrt sqrt^T]
-        return _assemble_predictive(
-            mean,
-            prior_cov,
-            covariance=covariance,
-            subtracted_factor=projected_cross,
-            added_factor=root_term,
-            jitter=model.prior.jitter,
+        # One root of shape (M, M) for each latent function: column l of the
+        # mean and root l give the predictive of latent function l.
+        num_latent_functions = self.variational_mean.shape[1]
+        roots = jnp.reshape(
+            self.variational_root, (num_latent_functions, *cholesky_kzz.shape)
         )
 
-    def _stacked_whitened_predictive(
-        self,
-        test_mean: Float[Array, "N 1"],
-        prior_cov: Float[Array, "..."],
-        projected_cross: Float[Array, "M N"],
-        *,
-        covariance: Literal["dense", "diagonal"],
-    ) -> GaussianDistribution:
-        r"""The whitened predictive for more than one latent function.
-
-        Each latent function :math:`l` has its own whitened moments
-        :math:`(\mu_l, \mathrm{sqrt}_l)` and shares the kernel, so the
-        predictive of each is the single-function predictive. The result is
-        flattened in blocked order, index :math:`l N + n`, with a
-        block-diagonal covariance: one :math:`N \times N` block for each
-        latent function.
-        """
+        # Ktt - A^T A + root^T root  [the S-term, S = sqrt sqrt^T]
         predictives = [
             _assemble_predictive(
-                test_mean
-                + jnp.matmul(projected_cross.T, self.variational_mean[:, [index]]),
+                mean[:, [index]],
                 prior_cov,
                 covariance=covariance,
                 subtracted_factor=projected_cross,
-                added_factor=jnp.matmul(
-                    self.variational_root[index].T, projected_cross
-                ),
-                jitter=self.model.prior.jitter,
+                added_factor=jnp.matmul(root.T, root_factor),
+                jitter=model.prior.jitter,
             )
-            for index in range(self.variational_mean.shape[1])
+            for index, root in enumerate(roots)
         ]
-        loc = jnp.concatenate([p.mean for p in predictives])
-        if covariance == "dense":
-            scale = BlockDiag([p.scale for p in predictives])
-        else:
-            scale = lx.DiagonalLinearOperator(
-                jnp.concatenate([p.variance for p in predictives])
-            )
-        return GaussianDistribution(loc=loc, scale=scale)
+        return _stack_predictives(predictives, covariance=covariance)
 
     def sample_approx(
         self,
@@ -674,6 +637,12 @@ class SparsePosterior(Posterior):
         if (not isinstance(num_samples, int)) or num_samples <= 0:
             raise ValueError("num_samples must be a positive integer")
         model = self.model
+        num_latent_functions = model.likelihood.num_latent_functions
+        if num_latent_functions > 1:
+            raise ValueError(
+                "sample_approx supports one latent function only, but the "
+                f"likelihood has {num_latent_functions}."
+            )
         if model.likelihood.num_outputs > 1:
             raise ValueError(
                 "sample_approx does not support multi-output likelihoods yet."

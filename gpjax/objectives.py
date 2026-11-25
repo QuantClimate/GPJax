@@ -6,6 +6,7 @@ from jaxtyping import Float
 import typing_extensions as tpe
 
 from gpjax.dataset import Dataset
+from gpjax.distributions import _marginals_per_latent_function
 from gpjax.gps import (
     ConjugateModel,
     NonConjugateModel,
@@ -324,12 +325,8 @@ def variational_expectation(
     # ignore it.
     qx = q.condition(data)(x, covariance="diagonal")
 
-    # The moments are flattened in blocked order (index l N + n); one column
-    # for each latent function of the likelihood.
     likelihood = q.model.likelihood
-    num_latent = likelihood.num_latent_functions
-    mean = qx.mean.reshape(num_latent, -1).T
-    variance = qx.variance.reshape(num_latent, -1).T
+    mean, variance = _marginals_per_latent_function(qx, likelihood.num_latent_functions)
 
     # approx int[log(p(y|f(x))) q(f(x))] df(x)
     expectation = likelihood.expected_log_likelihood(y, mean, variance, key=key)

@@ -156,14 +156,16 @@ def test_monte_carlo_matches_the_closed_form_gaussian_value(jit: bool):
         obs_stddev=jnp.array([1.0]),
         integrator=MonteCarloIntegrator(num_samples=20_000),
     )
-    y, mu, variance = jnp.array([[1.0]]), jnp.array([[0.0]]), jnp.array([[1.0]])
+    y, mean, variance = jnp.array([[1.0]]), jnp.array([[0.0]]), jnp.array([[1.0]])
 
-    def _ell(lik, key):
-        return lik.expected_log_likelihood(y, mu, variance, key=key)
+    def expected_log_likelihood(likelihood, key):
+        return likelihood.expected_log_likelihood(y, mean, variance, key=key)
 
-    ell = (jax.jit(_ell) if jit else _ell)(likelihood, jax.random.key(0))
-    assert ell.shape == (1,)
-    np.testing.assert_allclose(ell, -1.91893853, atol=0.04)
+    if jit:
+        expected_log_likelihood = jax.jit(expected_log_likelihood)
+    estimate = expected_log_likelihood(likelihood, jax.random.key(0))
+    assert estimate.shape == (1,)
+    np.testing.assert_allclose(estimate, -1.91893853, atol=0.04)
 
 
 def test_monte_carlo_two_class_softmax_matches_one_dimensional_quadrature():
@@ -175,19 +177,22 @@ def test_monte_carlo_two_class_softmax_matches_one_dimensional_quadrature():
     likelihood = Categorical(
         num_classes=2, integrator=MonteCarloIntegrator(num_samples=20_000)
     )
-    ell = likelihood.expected_log_likelihood(y, mean, variance, key=jax.random.key(1))
+    estimate = likelihood.expected_log_likelihood(
+        y, mean, variance, key=jax.random.key(1)
+    )
 
     points, weights = np.polynomial.hermite.hermgauss(60)
     expected = []
     for n in range(2):
         label = int(y[n, 0])
         other = 1 - label
-        loc = float(mean[n, label] - mean[n, other])
-        sd = float(np.sqrt(variance[n, 0] + variance[n, 1]))
-        d = loc + np.sqrt(2.0) * sd * points
-        expected.append(np.sum(weights * -np.logaddexp(0.0, -d)) / np.sqrt(np.pi))
-    assert ell.shape == (2,)
-    np.testing.assert_allclose(ell, np.array(expected), atol=0.02)
+        difference_mean = float(mean[n, label] - mean[n, other])
+        difference_stddev = float(np.sqrt(variance[n, 0] + variance[n, 1]))
+        difference = difference_mean + np.sqrt(2.0) * difference_stddev * points
+        log_sigmoid = -np.logaddexp(0.0, -difference)
+        expected.append(np.sum(weights * log_sigmoid) / np.sqrt(np.pi))
+    assert estimate.shape == (2,)
+    np.testing.assert_allclose(estimate, np.array(expected), atol=0.02)
 
 
 def test_monte_carlo_is_deterministic_for_a_fixed_key():
@@ -225,10 +230,10 @@ def test_monte_carlo_integrators_with_equal_settings_are_equal():
 def test_deterministic_integrators_ignore_a_supplied_key(likelihood):
     # The objective can pass a key whatever the likelihood; a deterministic
     # integrator gives the same value with and without it.
-    y, mu, variance = jnp.array([[1.0]]), jnp.array([[0.3]]), jnp.array([[0.7]])
-    without_key = likelihood.expected_log_likelihood(y, mu, variance)
+    y, mean, variance = jnp.array([[1.0]]), jnp.array([[0.3]]), jnp.array([[0.7]])
+    without_key = likelihood.expected_log_likelihood(y, mean, variance)
     with_key = likelihood.expected_log_likelihood(
-        y, mu, variance, key=jax.random.key(0)
+        y, mean, variance, key=jax.random.key(0)
     )
     np.testing.assert_array_equal(with_key, without_key)
 

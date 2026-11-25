@@ -494,8 +494,8 @@ class NonConjugateModel(JointModel[M, K, NGL]):
                 must cover.
             key: The random seed for the initial values.
         """
-        num_latent = self.likelihood.num_latent_functions
-        latent = jr.normal(key, shape=(num_datapoints, num_latent))
+        num_latent_functions = self.likelihood.num_latent_functions
+        latent = jr.normal(key, shape=(num_datapoints, num_latent_functions))
         return NonConjugateModel(
             prior=self.prior, likelihood=self.likelihood, latent=latent
         )

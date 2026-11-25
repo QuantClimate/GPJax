@@ -199,11 +199,11 @@ class AbstractVariationalGaussian(AbstractVariationalFamily[L]):
         model: JointModel,
         inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"] | Real,
     ):
-        num_latent = model.likelihood.num_latent_functions
-        if num_latent > 1 and not self._supports_multiple_latent_functions:
+        num_latent_functions = model.likelihood.num_latent_functions
+        if num_latent_functions > 1 and not self._supports_multiple_latent_functions:
             raise ValueError(
                 f"{type(self).__name__} supports one latent function only, but "
-                f"the likelihood has {num_latent}. Use "
+                f"the likelihood has {num_latent_functions}. Use "
                 "WhitenedVariationalGaussian."
             )
         if not isinstance(inducing_inputs, Real):
@@ -259,17 +259,39 @@ class VariationalGaussian(AbstractVariationalGaussian[L]):
     ):
         super().__init__(model, inducing_inputs)
 
-        num_latent = model.likelihood.num_latent_functions
+        num_latent_functions = model.likelihood.num_latent_functions
         if variational_mean is None:
-            variational_mean = jnp.zeros((self.num_inducing, num_latent))
+            variational_mean = jnp.zeros((self.num_inducing, num_latent_functions))
 
         if variational_root_covariance is None:
             variational_root_covariance = jnp.eye(self.num_inducing)
-            if num_latent > 1:
+            if num_latent_functions > 1:
                 variational_root_covariance = jnp.broadcast_to(
                     variational_root_covariance,
-                    (num_latent, self.num_inducing, self.num_inducing),
+                    (num_latent_functions, self.num_inducing, self.num_inducing),
                 )
+
+        # One mean column and one (M, M) root for each latent function; the
+        # root has no leading axis when there is one latent function.
+        num_inducing = self.num_inducing
+        expected_mean_shape = (num_inducing, num_latent_functions)
+        expected_root_shape = (num_inducing, num_inducing)
+        if num_latent_functions > 1:
+            expected_root_shape = (num_latent_functions, *expected_root_shape)
+        mean_shape = jnp.shape(val(variational_mean))
+        root_shape = jnp.shape(val(variational_root_covariance))
+        if mean_shape != expected_mean_shape:
+            raise ValueError(
+                f"variational_mean has shape {mean_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_mean_shape}."
+            )
+        if root_shape != expected_root_shape:
+            raise ValueError(
+                f"variational_root_covariance has shape {root_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_root_shape}."
+            )
 
         self.variational_mean = Real(variational_mean)
         self.variational_root_covariance = LowerTriangular(variational_root_covariance)

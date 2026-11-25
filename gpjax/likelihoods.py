@@ -33,6 +33,7 @@ from gpjax.distributions import (
     GaussianDistribution,
     GeneralisedExtremeValue,
     RealLike,
+    _marginals_per_latent_function,
     gev_return_level,
     gev_return_period,
 )
@@ -159,10 +160,10 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
     def expected_log_likelihood(
         self,
         y: Float[Array, "N Q"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
-        mean_g: Float[Array, "N D"] | None = None,
-        variance_g: Float[Array, "N D"] | None = None,
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
+        mean_g: Float[Array, "N L"] | None = None,
+        variance_g: Float[Array, "N L"] | None = None,
         key: KeyArray | None = None,
         **_: tp.Any,
     ) -> Float[Array, " N"]:
@@ -177,12 +178,12 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
 
         Args:
             y (Float[Array, 'N Q']): The observed response variable.
-            mean (Float[Array, 'N D']): The variational mean, with one column
+            mean (Float[Array, 'N L']): The variational mean, with one column
                 for each latent function.
-            variance (Float[Array, 'N D']): The variational variance.
-            mean_g (Float[Array, 'N D']): Optional moments of the latent noise
+            variance (Float[Array, 'N L']): The variational variance.
+            mean_g (Float[Array, 'N L']): Optional moments of the latent noise
                 process for heteroscedastic likelihoods.
-            variance_g (Float[Array, 'N D']): Optional moments of the latent noise
+            variance_g (Float[Array, 'N L']): Optional moments of the latent noise
                 process for heteroscedastic likelihoods.
             key (KeyArray | None): The random key for an integrator that draws
                 samples, such as ``MonteCarloIntegrator``. Deterministic
@@ -622,7 +623,7 @@ class _ClassIndexCategorical(npd.CategoricalLogits):
     :class:`numpyro.distributions.CategoricalLogits`.
     """
 
-    def log_prob(self, value: Float[Array, "... 1"]) -> Float[Array, ...]:
+    def log_prob(self, value: Float[Array, "*label_batch 1"]) -> Float[Array, "*batch"]:
         r"""Return the log probability of each class index.
 
         Args:
@@ -699,17 +700,15 @@ class Categorical(AbstractLikelihood):
         which needs no random key. ``Bernoulli.predict`` uses the same idea.
 
         Args:
-            dist: The latent distribution over $M$ test inputs and $C$
-                classes, flattened in blocked order (index $c M + m$), as
+            dist: The latent distribution over $N$ test inputs and $C$
+                classes, flattened in blocked order (index $c N + n$), as
                 ``posterior(test_inputs)`` returns it.
 
         Returns:
             The categorical distribution at each test input, with batch shape
-            ``(M,)``.
+            ``(N,)``.
         """
-        num_classes = self.num_classes
-        mean = dist.mean.reshape(num_classes, -1).T
-        variance = dist.variance.reshape(num_classes, -1).T
+        mean, variance = _marginals_per_latent_function(dist, self.num_classes)
         return self.link_function(mean / jnp.sqrt(1.0 + jnp.pi * variance / 8.0))
 
 

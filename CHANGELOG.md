@@ -15,12 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   share one kernel and one mean function. Labels are float class indices of
   shape `(N, 1)`. `WhitenedVariationalGaussian` holds one variational mean and
   root for each class, and `NonConjugateModel` holds an `(N, C)` latent. The
-  latent predictive is flattened in blocked order (index c·M + m), and
+  latent predictive is flattened in blocked order (index c·N + n), and
   `Categorical.predict` gives class probabilities from the moment-scaled
   softmax. The new `integrators.MonteCarloIntegrator` computes the expected
   log likelihood; it needs a random key, which you give as
   `elbo(q, data, key=key)` (see ADR-0002). `lx.diagonal` now works on
-  `BlockDiag` and `Kronecker`.
+  `BlockDiag`.
 
 ## [1.2.0] — 2026-11-25
 

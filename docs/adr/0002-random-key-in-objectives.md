@@ -34,9 +34,10 @@ L-BFGS works.
 ## Key splitting
 
 - The integrator draws all standard-normal samples for one evaluation in one
-  call of shape (N, S, C) from the key it gets. Thus the samples are
-  independent across samples, data points and classes, and no key is used
-  for two draws.
+  call of shape (N, S, L) from the key it gets, for N data points, S samples
+  and L latent functions (L = C for `Categorical`). Thus the samples are
+  independent across data points, samples and latent functions, and no key is
+  used for two draws.
 - A likelihood that needs more than one draw splits its key first. The GEV
   return-level methods already do this (`key_f, key_g`).
 - `elbo` passes the key on once and does not use it for anything else.

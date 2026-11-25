@@ -506,3 +506,59 @@ def test_gev_covariate_in_the_location_shifts_the_return_level():
     probability_ratio = periods[:, 0] / periods[:, 1]
     assert float(jnp.mean(probability_ratio > 1.0)) > 0.99
     assert float(jnp.median(periods[:, 0])) == pytest.approx(100.0, rel=0.3)
+
+
+# --- Categorical (softmax multi-class) likelihood ---
+
+
+def test_categorical_link_function_gives_softmax_probabilities():
+    likelihood = gpx.likelihoods.Categorical(num_classes=3)
+    latent_values = jnp.array([[0.0, jnp.log(2.0), 0.0]])
+    assert jnp.allclose(
+        likelihood.link_function(latent_values).probs,
+        jnp.array([[0.25, 0.5, 0.25]]),
+    )
+
+
+def test_categorical_log_prob_takes_float_class_indices_of_shape_n_by_one():
+    likelihood = gpx.likelihoods.Categorical(num_classes=3)
+    latent_values = jnp.array([[0.0, jnp.log(2.0), 0.0], [0.0, 0.0, 0.0]])
+    labels = jnp.array([[1.0], [2.0]])
+    log_prob = likelihood.link_function(latent_values).log_prob(labels)
+    assert log_prob.shape == (2,)
+    assert jnp.allclose(log_prob, jnp.log(jnp.array([0.5, 1.0 / 3.0])))
+
+
+def test_categorical_num_latent_functions_is_the_number_of_classes():
+    assert gpx.likelihoods.Categorical(num_classes=4).num_latent_functions == 4
+
+
+def test_likelihoods_other_than_categorical_have_one_latent_function():
+    assert gpx.likelihoods.Bernoulli().num_latent_functions == 1
+
+
+@pytest.mark.parametrize("dense", [True, False])
+def test_categorical_predict_applies_the_moment_scaled_softmax(dense):
+    # Two test inputs and three classes in blocked order: index c * N + n.
+    # Input 0 has means (0, 2 log 2, 0) and variance 24 / pi, so each mean is
+    # scaled by 1 / sqrt(1 + pi * (24 / pi) / 8) = 1 / 2 to (0, log 2, 0).
+    # Input 1 has zero means, so all classes are equally likely.
+    halving_variance = 24.0 / jnp.pi
+    loc = jnp.array([0.0, 0.0, 2.0 * jnp.log(2.0), 0.0, 0.0, 0.0])
+    variance = jnp.array(
+        [halving_variance, 0.0, halving_variance, 0.0, halving_variance, 0.0]
+    )
+    scale = (
+        lx.MatrixLinearOperator(jnp.diag(variance))
+        if dense
+        else lx.DiagonalLinearOperator(variance)
+    )
+    predictive = gpx.likelihoods.Categorical(num_classes=3).predict(
+        GaussianDistribution(loc=loc, scale=scale)
+    )
+    expected = jnp.array([[0.25, 0.5, 0.25], [1 / 3, 1 / 3, 1 / 3]])
+    assert jnp.allclose(predictive.probs, expected)
+    assert jnp.allclose(
+        predictive.log_prob(jnp.array([[1.0], [0.0]])),
+        jnp.log(jnp.array([0.5, 1 / 3])),
+    )
