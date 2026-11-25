@@ -16,8 +16,8 @@
 
 import abc
 import functools as ft
+import typing as tp
 
-import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import (
@@ -130,7 +130,7 @@ class Constant(AbstractMeanFunction):
 
     def __init__(
         self,
-        constant: tp.Union[ScalarFloat, Float[Array, " O"], AbstractUnwrappable] = 0.0,
+        constant: ScalarFloat | Float[Array, " O"] | AbstractUnwrappable = 0.0,
     ):
         if isinstance(constant, AbstractUnwrappable):
             self.constant = constant

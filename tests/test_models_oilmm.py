@@ -265,7 +265,7 @@ class TestOILMMPosterior:
         X_test = jnp.linspace(0.1, 0.9, N_test).reshape(-1, 1)
         pred = posterior.predict(X_test)
 
-        # Check mean shape (flattened output-major: [NP])
+        # Check mean shape (blocked order, index p * N + n: [NP])
         assert pred.mean.shape == (N_test * P,)
         assert jnp.all(jnp.isfinite(pred.mean))
 
@@ -301,7 +301,7 @@ class TestOILMMPosterior:
         )  # [M, N_test]
         H = model.mixing_matrix.H  # [P, M]
         expected_mean = jnp.einsum("pm,mn->pn", H, latent_means)  # [P, N_test]
-        expected_mean_flat = expected_mean.T.ravel()  # [N_test * P]
+        expected_mean_flat = expected_mean.ravel()  # [P * N_test], blocked
 
         assert jnp.allclose(pred.mean, expected_mean_flat, atol=1e-6)
 
@@ -946,14 +946,9 @@ class TestCovarianceEquivalence:
         H_kron_I = jnp.kron(H, jnp.eye(N_test))
         kron_cov = H_kron_I @ latent_cov_block @ H_kron_I.T
 
-        # Reindex from output-major ([p0 all t], [p1 all t], ...) to
-        # N-major ([t0 all p], [t1 all p], ...) to match predict() output.
-        n_major_idx = jnp.array(
-            [p * N_test + n for n in range(N_test) for p in range(P)]
-        )
-        kron_cov_n_major = kron_cov[n_major_idx][:, n_major_idx]
-
-        assert jnp.allclose(einsum_cov, kron_cov_n_major, atol=1e-6)
+        # (H ⊗ I) gives blocked order ([p0 all t], [p1 all t], ...), the
+        # order of predict().
+        assert jnp.allclose(einsum_cov, kron_cov, atol=1e-6)
 
 
 def test_create_oilmm_from_data_recovers_planted_subspace():
@@ -1182,3 +1177,42 @@ def test_return_full_cov_is_deprecated():
     with pytest.warns(DeprecationWarning, match="covariance"):
         legacy = posterior.predict(test_inputs, return_full_cov=False)
     assert jnp.allclose(legacy.mean, posterior(test_inputs, covariance="diagonal").mean)
+
+
+def test_predict_reshapes_to_one_column_per_output():
+    """``reshape(P, N).T`` of the blocked predictive gives an (N, P) array.
+
+    Column p of the mean is H[p] @ latent means, and column p of the variance
+    is H[p]**2 @ latent variances: the recipe in docs/migration.md for 1.3.0.
+    """
+    import gpjax as gpx
+    from gpjax.models.oilmm import OILMMModel
+
+    key = jr.key(7)
+    num_outputs, num_train, num_test = 3, 12, 5
+    model = OILMMModel(
+        num_outputs=num_outputs,
+        num_latent_gps=2,
+        kernel=gpx.kernels.RBF(),
+        key=key,
+    )
+    inputs = jnp.linspace(0.0, 1.0, num_train).reshape(-1, 1)
+    data = gpx.Dataset(X=inputs, y=jr.normal(key, (num_train, num_outputs)))
+    posterior = model.condition(data)
+    test_inputs = jnp.linspace(0.1, 0.9, num_test).reshape(-1, 1)
+    prediction = posterior.predict(test_inputs, covariance="diagonal")
+
+    latent_predictions = [latent(test_inputs) for latent in posterior.latent_posteriors]
+    latent_means = jnp.stack([latent.mean for latent in latent_predictions])
+    latent_variances = jnp.stack([latent.variance for latent in latent_predictions])
+    mixing = model.mixing_matrix.H  # [P, M]
+
+    mean_per_output = prediction.mean.reshape(num_outputs, num_test).T
+    variance_per_output = prediction.variance.reshape(num_outputs, num_test).T
+    assert mean_per_output.shape == (num_test, num_outputs)
+    assert jnp.allclose(mean_per_output, (mixing @ latent_means).T, atol=1e-6)
+    assert jnp.allclose(
+        variance_per_output,
+        (model.mixing_matrix.H_squared @ latent_variances).T,
+        atol=1e-6,
+    )

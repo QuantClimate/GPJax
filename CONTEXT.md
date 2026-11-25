@@ -23,6 +23,26 @@ Owns the model's single numerical-stabilisation knob, `jitter`.
 it holds no priors, no dataset facts, and no data sizes. (Both were tried and
 removed at v1.0 — see ADR-0001.)
 
+**latent function** — one Gaussian process f that the likelihood reads. A
+likelihood has L latent functions; every likelihood has L = 1 except the
+Categorical likelihood, which has one for each class (L = C). The L latent
+functions are independent and share one kernel and one mean function.
+
+**blocked order** — the order of the N · L values of L latent functions or
+outputs at N inputs in one flat vector: all N values of latent function (or
+output) 0, then all N of latent function 1, and so on (index l · N + n). Every
+predictive over more than one latent function or output uses this order: the
+`Categorical` likelihood, `ICMKernel`, `LCMKernel` and OILMM. Get an (N, L)
+array with `values.reshape(L, N).T`.
+
+**Categorical likelihood** — the multi-class classification likelihood
+p(y = c | f) = softmax(f)_c, with one latent function f_c per class and C
+classes. A label is the class index c ∈ {0, …, C − 1}. The number of classes
+C is the one structural fact it holds; it holds no other state. Its predicted
+class probabilities use the **moment-scaled softmax**,
+softmax(μ_c / √(1 + π σ²_c / 8)), where μ_c and σ²_c are the predictive mean
+and variance of f_c.
+
 **JointModel** — the joint distribution p(f, y) = p(y | f) · p(f), created by
 `prior * likelihood`. The *trainable* object: `gpx.fit` optimises its
 hyperparameters. It carries state that must exist before conditioning
@@ -79,8 +99,10 @@ second implementation. `model.predict(x, D)` and `model(x, D)` are sugar for
 `model.condition(D)(x)`; `model | D` is sugar for `model.condition(D)`.
 
 **objective** — a scalar function `(model, Dataset) -> ScalarFloat` consumed
-by `gpx.fit`. Objectives are thin: `conjugate_mll` is the evidence view of
-the conditioned posterior, not a second derivation.
+by `gpx.fit`. An objective that uses Monte Carlo also takes an optional
+keyword `key`; the user supplies it (see ADR-0002). Objectives are thin:
+`conjugate_mll` is the evidence view of the conditioned posterior, not a
+second derivation.
 
 **Dataset** — the data container. `n_total` records the full-dataset size
 when the object is a minibatch view (stamped by `get_batch`); the minibatch

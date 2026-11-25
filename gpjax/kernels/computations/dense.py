@@ -13,14 +13,18 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 from jax import vmap
 from jaxtyping import Float
 
 from gpjax.kernels.computations.base import AbstractKernelComputation
 from gpjax.typing import Array
 
-K = tp.TypeVar("K", bound="gpjax.kernels.base.AbstractKernel")
+if tp.TYPE_CHECKING:
+    from gpjax.kernels.base import AbstractKernel
+
+K = tp.TypeVar("K", bound="AbstractKernel")
 
 
 class DenseKernelComputation(AbstractKernelComputation):

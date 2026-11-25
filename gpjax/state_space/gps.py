@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-import beartype.typing as tp
 import jax.numpy as jnp
 from jaxtyping import (
     Bool,
@@ -122,7 +121,7 @@ class StateSpaceConjugateModel(ConjugateModel):
         self,
         train_data: Dataset,
         *,
-        observation_mask: tp.Optional[Bool[Array, " N"]] = None,
+        observation_mask: Bool[Array, " N"] | None = None,
     ) -> StateSpacePosterior:
         r"""Condition on data through the Kalman recursions.
 
@@ -145,7 +144,7 @@ class StateSpaceConjugateModel(ConjugateModel):
         train_data: Dataset,
         *,
         covariance: Literal["dense", "diagonal"] = "diagonal",
-        observation_mask: tp.Optional[Bool[Array, " N"]] = None,
+        observation_mask: Bool[Array, " N"] | None = None,
     ) -> GaussianDistribution:
         r"""Sugar: condition on ``train_data`` and query at ``test_inputs``."""
         return self.predict(
@@ -161,7 +160,7 @@ class StateSpaceConjugateModel(ConjugateModel):
         train_data: Dataset,
         *,
         covariance: Literal["dense", "diagonal"] = "diagonal",
-        observation_mask: tp.Optional[Bool[Array, " N"]] = None,
+        observation_mask: Bool[Array, " N"] | None = None,
     ) -> GaussianDistribution:
         r"""Sugar for the smoothed predictive: ``condition(D)(t)``.
 
@@ -188,7 +187,7 @@ class StateSpaceConjugateModel(ConjugateModel):
         train_data: Dataset,
         *,
         covariance: Literal["dense", "diagonal"] = "diagonal",
-        observation_mask: tp.Optional[Bool[Array, " N"]] = None,
+        observation_mask: Bool[Array, " N"] | None = None,
     ) -> GaussianDistribution:
         r"""Sugar for the causal predictive: ``condition(D).filtered(t)``.
 

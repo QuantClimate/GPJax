@@ -76,6 +76,11 @@ import networkx as nx
 import numpy as np
 import pytest
 
+from tests._categorical_helpers import (
+    three_class_data,
+    whitened_family,
+    zero_mean_rbf_prior,
+)
 from tests._dual_helpers import random_dual_sites
 
 _NUM_TRAIN = 10
@@ -899,3 +904,87 @@ def test_heteroscedastic_family_refuses_to_condition_and_names_the_alternative()
     message = str(excinfo.value)
     assert "predict_latents" in message
     assert "signal_variational" in message
+
+
+# --- Conditioning with more than one latent function (Categorical) ---
+
+
+def test_log_posterior_density_with_three_classes_at_the_prior_mean():
+    # A zero latent with a zero mean function gives f = 0, so each of the 4
+    # labels has probability 1/3, and each of the 4 * 3 whitened values adds
+    # the standard-normal log density at zero, -log(2 pi) / 2.
+    data = three_class_data()
+    model = zero_mean_rbf_prior() * gpx.likelihoods.Categorical(num_classes=3)
+    density = model.condition(data).log_posterior_density
+    expected = 4 * jnp.log(1.0 / 3.0) + 12 * (-0.5 * jnp.log(2.0 * jnp.pi))
+    assert jnp.allclose(density, expected)
+
+
+@pytest.mark.parametrize("covariance", ["dense", "diagonal"])
+def test_latent_predictive_with_three_classes_is_blocked_with_a_shared_covariance(
+    covariance,
+):
+    data = three_class_data()
+    latent = jr.normal(jr.key(0), (4, 3))
+    model = gpx.gps.NonConjugateModel(
+        zero_mean_rbf_prior(), gpx.likelihoods.Categorical(num_classes=3), latent=latent
+    )
+    test_inputs = jnp.linspace(-1.5, 1.5, 5).reshape(-1, 1)
+    predictive = model.condition(data)(test_inputs, covariance=covariance)
+
+    one_class_predictives = [
+        gpx.gps.NonConjugateModel(
+            zero_mean_rbf_prior(),
+            gpx.likelihoods.Bernoulli(),
+            latent=latent[:, [class_index]],
+        ).condition(data)(test_inputs, covariance="dense")
+        for class_index in range(3)
+    ]
+    expected_mean = jnp.concatenate(
+        [class_predictive.mean for class_predictive in one_class_predictives]
+    )
+    expected_covariance = jnp.kron(jnp.eye(3), one_class_predictives[0].covariance())
+    assert predictive.mean.shape == (15,)
+    assert jnp.allclose(predictive.mean, expected_mean)
+    if covariance == "dense":
+        assert jnp.allclose(predictive.covariance(), expected_covariance)
+    assert jnp.allclose(predictive.variance, jnp.diag(expected_covariance))
+
+
+@pytest.mark.parametrize("covariance", ["dense", "diagonal"])
+def test_whitened_predictive_with_three_classes_is_blocked_and_block_diagonal(
+    covariance,
+):
+    family, inducing_inputs, mean, root = whitened_family()
+    data = three_class_data()
+    test_inputs = jnp.linspace(-1.5, 1.5, 5).reshape(-1, 1)
+    predictive = family.condition(data)(test_inputs, covariance=covariance)
+
+    bernoulli_model = zero_mean_rbf_prior() * gpx.likelihoods.Bernoulli()
+    one_class_predictives = [
+        gpx.variational_families.WhitenedVariationalGaussian(
+            model=bernoulli_model,
+            inducing_inputs=inducing_inputs,
+            variational_mean=mean[:, [class_index]],
+            variational_root_covariance=root[class_index],
+        ).condition(data)(test_inputs, covariance="dense")
+        for class_index in range(3)
+    ]
+    expected_mean = jnp.concatenate(
+        [class_predictive.mean for class_predictive in one_class_predictives]
+    )
+    expected_covariance = jax.scipy.linalg.block_diag(
+        *[class_predictive.covariance() for class_predictive in one_class_predictives]
+    )
+    assert predictive.mean.shape == (15,)
+    assert jnp.allclose(predictive.mean, expected_mean)
+    if covariance == "dense":
+        assert jnp.allclose(predictive.covariance(), expected_covariance)
+    assert jnp.allclose(predictive.variance, jnp.diag(expected_covariance))
+
+
+def test_sparse_sample_approx_rejects_more_than_one_latent_function():
+    family, *_ = whitened_family()
+    posterior = family.condition(three_class_data())
+    with pytest.raises(ValueError, match="one latent function"):
+        posterior.sample_approx(num_samples=2, key=jr.key(0))

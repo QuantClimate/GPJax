@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 from jax import vmap
 from jaxtyping import Float
 import lineax as lx
@@ -21,7 +22,10 @@ import lineax as lx
 from gpjax.kernels.computations import AbstractKernelComputation
 from gpjax.typing import Array
 
-Kernel = tp.TypeVar("Kernel", bound="gpjax.kernels.base.AbstractKernel")
+if tp.TYPE_CHECKING:
+    from gpjax.kernels.base import AbstractKernel
+
+Kernel = tp.TypeVar("Kernel", bound="AbstractKernel")
 
 
 class DiagonalKernelComputation(AbstractKernelComputation):

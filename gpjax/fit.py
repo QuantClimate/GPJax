@@ -18,6 +18,7 @@ import typing as tp
 
 import equinox as eqx
 import jax
+import jax.core
 from jax.flatten_util import ravel_pytree
 import jax.numpy as jnp
 import jax.random as jr
@@ -526,6 +527,15 @@ def fit_natgrads(
         # opens a progress bar and buries the traceback in the scan trace. The step
         # itself repeats the check unconditionally as a backstop.
         _reject_frozen_coordinates(model)
+
+    # The natural-gradient steps assume one latent function: one mean column
+    # and one root matrix.
+    num_latent_functions = model.model.likelihood.num_latent_functions
+    if num_latent_functions > 1:
+        raise ValueError(
+            "fit_natgrads supports one latent function only, but the likelihood "
+            f"has {num_latent_functions}. Use fit with the elbo objective instead."
+        )
 
     model = _prepare_model(model, train_data)
 

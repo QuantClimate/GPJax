@@ -14,8 +14,8 @@
 # ==============================================================================
 
 import abc
+import typing as tp
 
-import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import (
@@ -48,18 +48,18 @@ class AbstractKernel(_SummaryMixin, eqx.Module):
     relevant columns for the kernel's evaluation.
     """
 
-    active_dims: tp.Union[list[int], slice] = eqx.field(
+    active_dims: list[int] | slice = eqx.field(
         static=True, default_factory=lambda: slice(None)
     )
     compute_engine: AbstractKernelComputation = eqx.field(
         static=True, default_factory=DenseKernelComputation
     )
-    n_dims: tp.Union[int, None] = eqx.field(static=True, default=None)
+    n_dims: int | None = eqx.field(static=True, default=None)
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
-        n_dims: tp.Union[int, None] = None,
+        active_dims: list[int] | slice | None = None,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initialise the AbstractKernel class.
@@ -222,8 +222,8 @@ class Constant(AbstractKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
-        constant: tp.Union[ScalarFloat, AbstractUnwrappable] = jnp.array(0.0),
+        active_dims: list[int] | slice | None = None,
+        constant: ScalarFloat | AbstractUnwrappable = jnp.array(0.0),
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         # Set child fields BEFORE super().__init__() (equinox freezes after super).
@@ -321,8 +321,8 @@ def _check_n_dims(n_dims: tp.Any):
 
 
 def _check_dims_compat(
-    active_dims: tp.Union[list[int], slice],
-    n_dims: tp.Union[int, None],
+    active_dims: list[int] | slice,
+    n_dims: int | None,
 ):
     err = ValueError(
         "Expected the length of active_dims to be equal to the specified n_dims."

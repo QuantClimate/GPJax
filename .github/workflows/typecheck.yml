@@ -1,0 +1,38 @@
+name: Type check
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Type check only: the job reads the checkout and writes nothing back.
+permissions: {}
+
+jobs:
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Resolve ty from uv.lock rather than the network, so a new ty release
+      # cannot turn every open PR red without a commit.
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Type-check the library
+        run: |
+          uv sync --frozen
+          uv run poe typecheck

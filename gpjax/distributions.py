@@ -16,10 +16,6 @@
 
 import math
 
-from beartype.typing import (
-    Optional,
-    Union,
-)
 from jax import (
     lax,
     vmap,
@@ -47,7 +43,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-RealLike = Union[float, int, Float[Array, "..."], Int[Array, "..."]]
+RealLike = float | int | Float[Array, "..."] | Int[Array, "..."]
 
 
 class GaussianDistribution(Distribution):
@@ -91,8 +87,8 @@ class GaussianDistribution(Distribution):
 
     def __init__(
         self,
-        loc: Optional[Float[Array, " N"]],
-        scale: Optional[lx.AbstractLinearOperator],
+        loc: Float[Array, " N"] | None,
+        scale: lx.AbstractLinearOperator | None,
         validate_args=None,
     ):
         self.loc = loc
@@ -240,6 +236,26 @@ class GaussianDistribution(Distribution):
             ScalarFloat: KL divergence in nats.
         """
         return _kl_divergence(self, other)
+
+
+def _marginals_per_latent_function(
+    dist: Distribution, num_latent_functions: int
+) -> tuple[Float[Array, "N L"], Float[Array, "N L"]]:
+    r"""Return the marginal means and variances, one column per latent function.
+
+    ``dist`` is flattened in blocked order: index :math:`l N + n` holds latent
+    function :math:`l` at input :math:`n`, as a posterior returns it.
+
+    Args:
+        dist: A Gaussian over ``N * L`` values in blocked order.
+        num_latent_functions: The number of latent functions ``L``.
+
+    Returns:
+        The means and the variances, each of shape ``(N, L)``.
+    """
+    mean = dist.mean.reshape(num_latent_functions, -1).T
+    variance = dist.variance.reshape(num_latent_functions, -1).T
+    return mean, variance
 
 
 def _check_and_return_dimension(
@@ -707,7 +723,7 @@ class GeneralisedExtremeValue(Distribution):
         concentration: RealLike = 0.0,
         *,
         support_continuation: bool = False,
-        validate_args: Optional[bool] = None,
+        validate_args: bool | None = None,
     ):
         loc, scale, concentration = _as_arrays(loc, scale, concentration)
         self.loc, self.scale, self.concentration = promote_shapes(

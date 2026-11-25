@@ -71,6 +71,11 @@ import paramax
 import pytest
 import scipy
 
+from tests._categorical_helpers import (
+    three_class_data,
+    whitened_family,
+    zero_mean_rbf_prior,
+)
 from tests._reference.conjugate_svgp import conjugate_optimum
 
 
@@ -1301,3 +1306,52 @@ def test_fit_on_dual_family_still_works() -> None:
     assert history.shape == (20,)
     assert bool(jnp.all(jnp.isfinite(history)))
     assert history[-1] < history[0]
+
+
+# --- fitting a likelihood with more than one latent function (Categorical) ---
+
+
+def test_fit_separates_three_classes():
+    # Three classes in three bands of the input: class c for x in band c.
+    inputs = jnp.linspace(-3.0, 3.0, 60).reshape(-1, 1)
+    labels = jnp.digitize(inputs[:, 0], jnp.array([-1.0, 1.0]))
+    data = gpx.Dataset(X=inputs, y=labels.astype(jnp.float64).reshape(-1, 1))
+
+    model = zero_mean_rbf_prior() * gpx.likelihoods.Categorical(num_classes=3)
+    family = gpx.variational_families.WhitenedVariationalGaussian(
+        model=model, inducing_inputs=jnp.linspace(-3.0, 3.0, 10).reshape(-1, 1)
+    )
+
+    fit_key, elbo_key = jr.split(jr.key(0))
+
+    def objective(q, batch):
+        return -gpx.objectives.elbo(q, batch, key=elbo_key)
+
+    fitted, history = gpx.fit(
+        model=family,
+        objective=objective,
+        train_data=data,
+        optim=ox.adam(0.05),
+        key=fit_key,
+        num_iters=300,
+        verbose=False,
+    )
+    assert history[-1] < history[0]
+
+    probabilities = model.likelihood.predict(fitted.condition(data)(inputs)).probs
+    accuracy = jnp.mean(jnp.argmax(probabilities, axis=1) == labels)
+    assert accuracy > 0.9
+
+
+def test_fit_natgrads_rejects_more_than_one_latent_function():
+    family, *_ = whitened_family()
+    elbo_key = jr.key(0)
+    with pytest.raises(ValueError, match="one latent function"):
+        gpx.fit_natgrads(
+            model=family,
+            objective=lambda q, batch: -gpx.objectives.elbo(q, batch, key=elbo_key),
+            train_data=three_class_data(),
+            optim=ox.adam(0.01),
+            num_iters=2,
+            verbose=False,
+        )

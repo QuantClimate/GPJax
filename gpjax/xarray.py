@@ -45,8 +45,8 @@ from dataclasses import (
     field,
     replace,
 )
+import typing as tp
 
-import beartype.typing as tp
 import jax
 import jax.numpy as jnp
 from jaxtyping import Float
@@ -109,9 +109,9 @@ class Standardise(InputTransform):
             before fitting.
     """
 
-    names: tp.Optional[tp.Sequence[str]] = None
-    loc: tp.Optional[dict[str, float]] = field(default=None, compare=False)
-    scale: tp.Optional[dict[str, float]] = field(default=None, compare=False)
+    names: tp.Sequence[str] | None = None
+    loc: dict[str, float] | None = field(default=None, compare=False)
+    scale: dict[str, float] | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if isinstance(self.names, str):
@@ -288,7 +288,7 @@ class GridSpec:
         )
 
     def inputs_for(
-        self, obj: tp.Union[xr.Dataset, xr.DataArray]
+        self, obj: xr.Dataset | xr.DataArray
     ) -> tuple[Float[Array, "M D"], "GridSpec"]:
         r"""Build prediction inputs on a new grid, encoded as in training.
 
@@ -332,7 +332,7 @@ class GridSpec:
     def predict(
         self,
         predict_fn: tp.Callable[[Float[Array, "M D"]], tp.Any],
-        obj: tp.Union[xr.Dataset, xr.DataArray],
+        obj: xr.Dataset | xr.DataArray,
         *,
         chunk_size: int = 4096,
     ) -> xr.Dataset:
@@ -419,8 +419,8 @@ class GridSpec:
         self,
         dist: GaussianDistribution,
         *,
-        num_samples: tp.Optional[int] = None,
-        key: tp.Optional[KeyArray] = None,
+        num_samples: int | None = None,
+        key: KeyArray | None = None,
     ) -> xr.Dataset:
         r"""Map a predictive distribution back onto the labelled grid.
 
@@ -457,12 +457,12 @@ class GridSpec:
 
     def scatter(
         self,
-        values: tp.Union[Float[Array, "..."], np.ndarray],
+        values: Float[Array, "..."] | np.ndarray,
         *,
         name: str,
         dims: tp.Sequence[str] = (),
-        coords: tp.Optional[tp.Mapping[str, tp.Any]] = None,
-        attrs: tp.Optional[tp.Mapping[str, tp.Any]] = None,
+        coords: tp.Mapping[str, tp.Any] | None = None,
+        attrs: tp.Mapping[str, tp.Any] | None = None,
     ) -> xr.DataArray:
         r"""Place one value for each kept cell onto the labelled grid.
 
@@ -526,7 +526,7 @@ class GridSpec:
         return grid.rename(name)
 
     def _grid_of(
-        self, obj: tp.Union[xr.Dataset, xr.DataArray]
+        self, obj: xr.Dataset | xr.DataArray
     ) -> tuple[xr.Dataset, list[xr.DataArray], tuple[str, ...]]:
         r"""The inputs of this spec in ``obj``, and the dims of their grid.
 
@@ -563,7 +563,7 @@ class GridSpec:
         self,
         dist: GaussianDistribution,
         num_samples: int,
-        key: tp.Optional[KeyArray],
+        key: KeyArray | None,
     ) -> xr.Dataset:
         r"""Joint draws from ``dist``, scattered onto the grid per sample."""
         if key is None:
@@ -604,7 +604,7 @@ class GridSpec:
 
 
 def from_xarray(
-    obj: tp.Union[xr.Dataset, xr.DataArray],
+    obj: xr.Dataset | xr.DataArray,
     target: str,
     inputs: tp.Sequence[str],
     *,
@@ -765,7 +765,7 @@ def _in_chunks(
     return np.concatenate(means), np.concatenate(variances)
 
 
-def _as_dataset(obj: tp.Union[xr.Dataset, xr.DataArray]) -> xr.Dataset:
+def _as_dataset(obj: xr.Dataset | xr.DataArray) -> xr.Dataset:
     r"""Promote a named ``DataArray`` to a one-variable ``Dataset``."""
     if isinstance(obj, xr.Dataset):
         return obj

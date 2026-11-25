@@ -1,6 +1,5 @@
 """Compute Random Fourier Feature (RFF) kernel approximations."""
 
-import beartype.typing as tp
 import jax.random as jr
 from jaxtyping import Float
 
@@ -32,13 +31,13 @@ class RFF(AbstractKernel):
     compute_engine: BasisFunctionComputation
     base_kernel: StationaryKernel
     num_basis_fns: int
-    frequencies: tp.Union[Float[Array, "M D"], None]
+    frequencies: Float[Array, "M D"] | None
 
     def __init__(
         self,
         base_kernel: StationaryKernel,
         num_basis_fns: int = 50,
-        frequencies: tp.Union[Float[Array, "M D"], None] = None,
+        frequencies: Float[Array, "M D"] | None = None,
         compute_engine: BasisFunctionComputation = BasisFunctionComputation(),
         key: KeyArray = jr.key(0),
     ):

@@ -41,6 +41,7 @@ from gpjax.kernels import (
 from gpjax.likelihoods import (
     AbstractLikelihood,
     Bernoulli,
+    Categorical,
     Gaussian,
     Poisson,
     StudentT,
@@ -626,7 +627,7 @@ class TestMultiOutputPosteriorPredict:
         """At training points, posterior mean is close to training data."""
         posterior, data, N, P = mo_setup
         pred = posterior.predict(data.X, data)
-        # Mean is output-major [NP], reshape to [P, N] then transpose to [N, P]
+        # Mean is in blocked order [NP], reshape to [P, N] then transpose to [N, P]
         mean_reshaped = pred.mean.reshape(P, N).T
         residual = jnp.abs(mean_reshaped - data.y)
         assert jnp.mean(residual) < 1.0  # Loose bound
@@ -722,3 +723,13 @@ def test_frozen_parameter_predicts_without_explicit_unwrap():
 
 if __name__ == "__main__":
     test_conjugate_posterior_sample_approx(10, RBF, Zero)
+
+
+# --- NonConjugateModel with more than one latent function ---
+
+
+def test_prior_times_categorical_holds_one_latent_column_per_class():
+    prior = Prior(mean_function=Zero(), kernel=RBF())
+    model = prior * Categorical(num_classes=3)
+    assert isinstance(model, NonConjugateModel)
+    assert paramax.unwrap(model.init_latent(5).latent).shape == (5, 3)
