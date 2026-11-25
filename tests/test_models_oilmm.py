@@ -265,7 +265,7 @@ class TestOILMMPosterior:
         X_test = jnp.linspace(0.1, 0.9, N_test).reshape(-1, 1)
         pred = posterior.predict(X_test)
 
-        # Check mean shape (flattened output-major: [NP])
+        # Check mean shape (blocked order, index p * N + n: [NP])
         assert pred.mean.shape == (N_test * P,)
         assert jnp.all(jnp.isfinite(pred.mean))
 
@@ -301,7 +301,7 @@ class TestOILMMPosterior:
         )  # [M, N_test]
         H = model.mixing_matrix.H  # [P, M]
         expected_mean = jnp.einsum("pm,mn->pn", H, latent_means)  # [P, N_test]
-        expected_mean_flat = expected_mean.T.ravel()  # [N_test * P]
+        expected_mean_flat = expected_mean.ravel()  # [P * N_test], blocked
 
         assert jnp.allclose(pred.mean, expected_mean_flat, atol=1e-6)
 
@@ -946,14 +946,9 @@ class TestCovarianceEquivalence:
         H_kron_I = jnp.kron(H, jnp.eye(N_test))
         kron_cov = H_kron_I @ latent_cov_block @ H_kron_I.T
 
-        # Reindex from output-major ([p0 all t], [p1 all t], ...) to
-        # N-major ([t0 all p], [t1 all p], ...) to match predict() output.
-        n_major_idx = jnp.array(
-            [p * N_test + n for n in range(N_test) for p in range(P)]
-        )
-        kron_cov_n_major = kron_cov[n_major_idx][:, n_major_idx]
-
-        assert jnp.allclose(einsum_cov, kron_cov_n_major, atol=1e-6)
+        # (H ⊗ I) gives blocked order ([p0 all t], [p1 all t], ...), the
+        # order of predict().
+        assert jnp.allclose(einsum_cov, kron_cov, atol=1e-6)
 
 
 def test_create_oilmm_from_data_recovers_planted_subspace():

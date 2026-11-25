@@ -8,6 +8,22 @@ Releases not listed here made no breaking changes; see the
 [changelog](gh:blob/main/CHANGELOG.md) for
 the full history.
 
+## 1.2.x → 1.3.0
+
+GPJax `1.3` adds features. One change can affect existing code: the OILMM
+predictive is now in blocked order, the order that `ICMKernel`, `LCMKernel` and
+the `Categorical` likelihood already use.
+
+- `OILMMPosterior(test_inputs)` and `OILMMModel.predict` return the `N · P`
+  values with index `p · N + n`: all `N` test inputs of output 0 first, then
+  output 1, and so on. Before, the index was `n · P + p`: all `P` outputs of
+  test input 0 first. The shape `(N · P,)` does not change, so old code gives
+  wrong numbers without an error.
+- The dense covariance and the marginal variances use the same order as the
+  mean.
+- To get an `(N, P)` array, replace `pred.mean.reshape(N, P)` with
+  `pred.mean.reshape(P, N).T`. Do the same for the variances.
+
 ## 1.1.x → 1.2.0
 
 GPJax `1.2` adds features and changes what it installs. The GPJax API does not
@@ -212,8 +228,10 @@ latent_pred = latent(X[:5])                  # was: predict(x, train_data=...)
 ```
 
 For this multi-output process `covariance="dense"` returns the joint
-`(NP, NP)` covariance across test inputs *and* outputs, flattened
-output-major, where single-output processes return `(N, N)`.
+`(NP, NP)` covariance across test inputs *and* outputs, where single-output
+processes return `(N, N)`. In `1.0` to `1.2` the values are in input-major
+order (index `n · P + p`); from `1.3.0` they are in blocked order (index
+`p · N + n`).
 
 `HeteroscedasticVariationalFamily` is the exception: it approximates two
 latent processes, so it has no single conditioned process and its

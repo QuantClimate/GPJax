@@ -421,12 +421,18 @@ class OILMMPosterior(Posterior):
         space: the mean as :math:`H \mu`, and the covariance as
         :math:`(H \otimes I) \Sigma (H \otimes I)^{\top}`.
 
-        Note that for this multi-output process ``covariance="dense"`` returns
-        the joint :math:`(NP, NP)` covariance across both test inputs and
-        outputs, flattened output-major to match the mean; single-output
-        processes return :math:`(N, N)`. ``covariance="diagonal"`` returns the
-        :math:`NP` marginal variances, and asks the same of each latent
-        process, so the dense latent covariances are never formed.
+        The predictive is over :math:`NP` values in blocked order: index
+        :math:`pN + n` holds output :math:`p` at test input :math:`n`, so all
+        :math:`N` values of output 0 come first. ``ICMKernel``, ``LCMKernel``
+        and the ``Categorical`` likelihood use the same order. Read the
+        ``(N, P)`` mean with ``mean.reshape(P, N).T``.
+
+        For this multi-output process ``covariance="dense"`` returns the joint
+        :math:`(NP, NP)` covariance across both test inputs and outputs, in the
+        same blocked order as the mean; single-output processes return
+        :math:`(N, N)`. ``covariance="diagonal"`` returns the :math:`NP`
+        marginal variances, and asks the same of each latent process, so the
+        dense latent covariances are never formed.
 
         The default is ``"diagonal"``: forming the joint covariance costs
         :math:`O(m n^2 p^2)` (an :math:`np \times np` matrix from :math:`m`
@@ -442,7 +448,7 @@ class OILMMPosterior(Posterior):
 
         Returns:
             GaussianDistribution: The predictive distribution, with ``loc`` of
-            shape ``(NP,)`` flattened output-major.
+            shape ``(NP,)`` in blocked order (index :math:`pN + n`).
         """
         num_test = test_inputs.shape[0]
         mixing = self.mixing_matrix.H  # [P, M]
@@ -456,7 +462,7 @@ class OILMMPosterior(Posterior):
         )  # [M, N]
 
         mixed_mean = jnp.einsum("pm,mn->pn", mixing, latent_means)  # [P, N]
-        mixed_mean_flat = mixed_mean.T.ravel()  # [NP], output-major
+        mixed_mean_flat = mixed_mean.ravel()  # [NP], blocked: index p * N + n
 
         if covariance == "dense":
             # Cov[p1, p2] = sum_m H[p1, m] H[p2, m] Sigma_latent_m.
@@ -466,10 +472,10 @@ class OILMMPosterior(Posterior):
             blocks = jnp.einsum(
                 "pm,qm,mij->pqij", mixing, mixing, latent_covariances
             )  # [P, P, N, N]
-            # Reorder to [N, P, N, P] so flattening matches the mean's.
+            # Reorder to [P, N, P, N] so flattening matches the mean's.
             size = num_test * self.num_outputs
             scale = lx.MatrixLinearOperator(
-                blocks.transpose(2, 0, 3, 1).reshape(size, size)
+                blocks.transpose(0, 2, 1, 3).reshape(size, size)
             )
         else:
             latent_variances = jnp.stack(
@@ -478,7 +484,7 @@ class OILMMPosterior(Posterior):
             mixed_variances = jnp.einsum(
                 "pm,mn->pn", self.mixing_matrix.H_squared, latent_variances
             )  # [P, N]
-            scale = lx.DiagonalLinearOperator(mixed_variances.T.ravel())
+            scale = lx.DiagonalLinearOperator(mixed_variances.ravel())
 
         return GaussianDistribution(
             loc=jnp.atleast_1d(mixed_mean_flat.squeeze()),

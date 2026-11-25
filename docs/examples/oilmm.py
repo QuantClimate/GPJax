@@ -311,9 +311,7 @@ def plot_wave_output_panel(
         if func_std is not None:
             alpha = 0.26 if obs_std is not None else 0.2
             label = (
-                "Two sigma - latent function"
-                if obs_std is not None
-                else "Two sigma"
+                "Two sigma - latent function" if obs_std is not None else "Two sigma"
             )
             ax.fill_between(
                 test_hours,
@@ -436,16 +434,15 @@ posterior = model.condition(train_data)
 
 # %% mystnb={"figure": {"caption": "Output-space predictions from the PCA-initialised OILMM before any optimisation, serving as the baseline for the fitted model.", "name": "fig-oilmm-baseline-predictions"}}
 N_test = 300
-test_time_hours = jnp.linspace(
-    float(time_hours.min()), float(time_hours.max()), N_test
-)
+test_time_hours = jnp.linspace(float(time_hours.min()), float(time_hours.max()), N_test)
 X_test = ((test_time_hours - input_mean) / input_std).reshape(-1, 1)
 
+# The prediction is over all outputs at all test inputs, in blocked order: the
+# N_test values of output 0 come first, then those of output 1, and so on.
+# `reshape(num_outputs, N_test).T` gives an array of shape (N_test, num_outputs).
 pre_pred = posterior.predict(X_test, covariance="diagonal")
-pre_opt_mean_standardised = pre_pred.mean.reshape(N_test, num_outputs)
-pre_opt_std_standardised = jnp.sqrt(jnp.diag(pre_pred.covariance())).reshape(
-    N_test, num_outputs
-)
+pre_opt_mean_standardised = pre_pred.mean.reshape(num_outputs, N_test).T
+pre_opt_std_standardised = jnp.sqrt(pre_pred.variance).reshape(num_outputs, N_test).T
 pre_obs_noise_var = (
     model.mixing_matrix.obs_noise_variance.unwrap()
     + model.mixing_matrix.H_squared @ model.mixing_matrix.latent_noise_variance.unwrap()
@@ -550,10 +547,8 @@ print(f"Optimised MLL: {opt_mll:.3f}")
 # %%
 opt_posterior = opt_model.condition(train_data)
 post_pred = opt_posterior.predict(X_test, covariance="diagonal")
-post_opt_mean_standardised = post_pred.mean.reshape(N_test, num_outputs)
-post_opt_std_standardised = jnp.sqrt(jnp.diag(post_pred.covariance())).reshape(
-    N_test, num_outputs
-)
+post_opt_mean_standardised = post_pred.mean.reshape(num_outputs, N_test).T
+post_opt_std_standardised = jnp.sqrt(post_pred.variance).reshape(num_outputs, N_test).T
 post_obs_noise_var = (
     opt_model.mixing_matrix.obs_noise_variance.unwrap()
     + opt_model.mixing_matrix.H_squared
