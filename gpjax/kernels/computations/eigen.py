@@ -14,7 +14,8 @@
 # ==============================================================================
 
 
-import beartype.typing as tp
+import typing as tp
+
 from jaxtyping import (
     Float,
     Num,
@@ -23,10 +24,10 @@ from jaxtyping import (
 from gpjax.kernels.computations.base import AbstractKernelComputation
 from gpjax.typing import Array
 
-Kernel = tp.TypeVar(
-    "Kernel",
-    bound="gpjax.kernels.non_euclidean.graph.GraphKernel",
-)
+if tp.TYPE_CHECKING:
+    from gpjax.kernels.non_euclidean.graph import GraphKernel
+
+Kernel = tp.TypeVar("Kernel", bound="GraphKernel")
 
 
 class EigenKernelComputation(AbstractKernelComputation):

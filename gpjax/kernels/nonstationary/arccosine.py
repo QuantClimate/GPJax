@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Float
@@ -33,8 +34,8 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-WeightVariance = tp.Union[Float[Array, "D"], ScalarArray]
-WeightVarianceCompatible = tp.Union[ScalarFloat, list[float], WeightVariance]
+WeightVariance = Float[Array, " D"] | ScalarArray
+WeightVarianceCompatible = ScalarFloat | list[float] | WeightVariance
 
 
 class ArcCosine(AbstractKernel):
@@ -55,12 +56,12 @@ class ArcCosine(AbstractKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
+        active_dims: list[int] | slice | None = None,
         order: tp.Literal[0, 1, 2] = 0,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        weight_variance: tp.Union[WeightVarianceCompatible, AbstractUnwrappable] = 1.0,
-        bias_variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        weight_variance: WeightVarianceCompatible | AbstractUnwrappable = 1.0,
+        bias_variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initializes the kernel.
@@ -118,8 +119,8 @@ class ArcCosine(AbstractKernel):
         r"""Calculate the weighted product between two arguments.
 
         Args:
-            x (Float[Array, "D"]): The left hand argument.
-            y (Float[Array, "D"]): The right hand argument.
+            x (Float[Array, " D"]): The left hand argument.
+            y (Float[Array, " D"]): The right hand argument.
         Returns:
             ScalarFloat: The value of the weighted product between the two arguments``.
         """

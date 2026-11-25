@@ -15,7 +15,8 @@
 
 from __future__ import annotations
 
-import beartype.typing as tp
+import typing as tp
+
 import jax.numpy as jnp
 from jaxtyping import (
     Float,

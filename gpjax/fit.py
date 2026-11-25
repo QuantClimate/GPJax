@@ -18,6 +18,7 @@ import typing as tp
 
 import equinox as eqx
 import jax
+import jax.core
 from jax.flatten_util import ravel_pytree
 import jax.numpy as jnp
 import jax.random as jr

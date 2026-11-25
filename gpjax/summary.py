@@ -8,9 +8,10 @@ user-facing abstract bases for ``rich.print`` and notebook auto-rendering.
 """
 
 import io
+import typing as tp
 
-import beartype.typing as tp
 import jax
+import jax.core
 import numpy as np
 from numpyro.distributions import biject_to
 import paramax

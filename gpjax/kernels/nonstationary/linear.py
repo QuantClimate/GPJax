@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 import jax.numpy as jnp
 from jaxtyping import Float
 from paramax import AbstractUnwrappable
@@ -44,9 +45,9 @@ class Linear(AbstractKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        active_dims: list[int] | slice | None = None,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initializes the kernel.

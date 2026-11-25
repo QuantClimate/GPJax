@@ -7,16 +7,16 @@ name = "gpjax"
 dynamic = ["version"]
 description = 'Gaussian processes in JAX.'
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 keywords = ["gaussian-processes jax machine-learning bayesian"]
 authors = [{ name = "Thomas Pinder", email = "tompinder@live.co.uk" }]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
@@ -27,7 +27,6 @@ dependencies = [
   "numpyro>=0.19.0",
   "jaxtyping>0.2.10",
   "tqdm>4.66.2",
-  "beartype>0.16.1",
   "equinox>=0.11.0",
   "paramax>=0.0.5",
   "lineax>=0.0.6",
@@ -51,6 +50,9 @@ docs = [
   "sphinx-sitemap>=2.6",
   "ipykernel>=6.29",
   "jupytext>=1.16",           # py:percent notebooks read via nb_custom_formats
+  # The example notebooks check array shapes at runtime with the jaxtyping
+  # import hook, which uses beartype.
+  "beartype>=0.20",
   # -- GPJax-specific, no impulso counterpart --
   # GPJax writes $...$ maths in docstrings; impulso does not. MyST's dollarmath
   # reaches .md and notebooks but NOT docstrings, which napoleon hands to
@@ -119,6 +121,12 @@ dev = [
   "mktestdocs>=0.2.1",
   "networkx",
   "jupytext",
+  # Static type checker (`poe typecheck` and .github/workflows/typecheck.yml).
+  "ty>=0.0.106",
+  # Runtime check of jaxtyping array shapes and dtypes in the tests
+  # (tests/conftest.py and `poe test`). ty cannot check shapes. Dev only:
+  # installing GPJax does not install beartype.
+  "beartype>=0.20",
   "pytest-beartype",
   "poethepoet>=0.37.0",
   "twine>=6.2.0",
@@ -197,6 +205,10 @@ help = "Run tests including slow tests"
 [tool.poe.tasks.coverage]
 cmd = "pytest . -v --cov=./gpjax --cov-report=xml:./coverage.xml"
 help = "Run tests with coverage reporting"
+
+[tool.poe.tasks.typecheck]
+cmd = "ty check gpjax"
+help = "Type-check the library with ty"
 
 [tool.poe.tasks.docstrings]
 cmd = "xdoctest ./gpjax"
@@ -285,11 +297,11 @@ shell = "asv continuous --machine $(hostname -s) -e ${1} ${2}"
 
 # Combined tasks
 [tool.poe.tasks.all-tests]
-sequence = ["lint", "docstrings", "bench-check", "test"]
+sequence = ["lint", "typecheck", "docstrings", "bench-check", "test"]
 help = "Run all checks and tests"
 
 [tool.poe.tasks.all-tests-slow]
-sequence = ["lint", "docstrings", "test-slow"]
+sequence = ["lint", "typecheck", "docstrings", "test-slow"]
 help = "Run all checks and tests including slow tests"
 
 [tool.coverage.run]
@@ -317,6 +329,43 @@ markers = [
     "slow: long-running numerical and memory stress tests (opt-in via poe all-tests-slow)",
 ]
 
+[tool.ty.environment]
+python-version = "3.12"
+
+[tool.ty.analysis]
+# Optional dependencies (the `docs` extra) that CI does not install for the
+# type check, and the pre-0.6 jaxlib module that `citation.py` falls back from.
+allowed-unresolved-imports = [
+  "matplotlib.**",
+  "qc_core.**",
+  "jaxlib.xla_extension",
+  "jaxlib._jax",
+]
+
+[tool.ty.rules]
+# `poe typecheck` fails on every diagnostic, error or warning. The rules below
+# have findings in the current code, so they are off. Most of these findings
+# come from Equinox dataclass fields, NumPyro method signatures, and Optional
+# values that the code narrows at runtime. To see the findings of a rule, run
+# `uv run ty check gpjax --warn <rule>`. When you fix all the findings of a
+# rule, remove its line.
+invalid-dataclass-field-order = "ignore"
+invalid-argument-type = "ignore"
+missing-union-attribute = "ignore"
+incompatible-method-override = "ignore"
+invalid-explicit-return = "ignore"
+unsupported-operator = "ignore"
+incompatible-property-override = "ignore"
+missing-attribute = "ignore"
+invalid-assignment = "ignore"
+lost-keyword-for-regular-parameter = "ignore"
+not-subscriptable = "ignore"
+invalid-parameter-default = "ignore"
+too-many-positional-arguments = "ignore"
+invalid-type-arguments = "ignore"
+incompatible-mutable-override = "ignore"
+incompatible-attribute-override = "ignore"
+
 [tool.ruff] # https://github.com/charliermarsh/ruff
 fix = true
 cache-dir = "~/.cache/ruff"
@@ -324,7 +373,7 @@ cache-dir = "~/.cache/ruff"
 exclude = ["docs/"]
 line-length = 88
 src = ["gpjax", "tests", "benchmarks"]
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
@@ -363,6 +412,10 @@ select = [
 ignore = [
   # calls in argument defaults
   "B008",
+  # PEP 695 type-parameter syntax (`class Prior[K: AbstractKernel]`). Moving
+  # the public Equinox generics to it is a separate change.
+  "UP046",
+  "UP047",
   # space before : (needed for how black formats slicing)
   # "E203",  # not yet implemented
   # module level import not at top of file

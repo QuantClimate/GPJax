@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-25
+
+### Changed
+
+- **GPJax supports Python 3.12 to 3.14.** GPJax does not support Python 3.11.
+  CI tests Python 3.12, 3.13 and 3.14.
+- **beartype is no longer a runtime dependency.** Installing GPJax does not
+  install beartype. The library imports its typing names from `typing` and
+  `collections.abc`. The test suite and the example notebooks still check array
+  shapes at runtime with the jaxtyping import hook and beartype, which are now
+  dev and `docs` dependencies. A new CI job checks types statically with ty
+  (`uv run poe typecheck`).
+
 ### Added
 
 - **GEV likelihoods and return levels for extremes.** `likelihoods.GEV` puts a
@@ -542,6 +555,7 @@ instructions.
 - Added: `equinox>=0.11`, `paramax>=0.0.5`, `lineax`.
 - Removed: `flax`, `cola-ml`.
 
+[1.2.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.2.0
 [1.1.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.1.0
 [1.0.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.0.0
 [0.18.0]: https://github.com/QuantClimate/GPJax/releases/tag/v0.18.0

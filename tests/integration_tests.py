@@ -15,6 +15,7 @@
 # ---
 
 # %%
+from collections.abc import Callable
 from dataclasses import (
     dataclass,
     field,
@@ -23,11 +24,10 @@ import os
 import sys
 
 # %%
-from beartype.typing import (
+from typing import (
     Any,
-    Callable,
-    Dict,
 )
+
 import gpjax
 import jax.numpy as jnp
 import jupytext
@@ -50,7 +50,7 @@ class Result:
 
     def _compare(
         self,
-        observed_variables: Dict[str, Any],
+        observed_variables: dict[str, Any],
         variable_name: str,
         true_value: float,
         operation: Callable[[Any], Any],

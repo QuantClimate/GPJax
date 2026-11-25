@@ -16,10 +16,6 @@
 
 import math
 
-from beartype.typing import (
-    Optional,
-    Union,
-)
 from jax import (
     lax,
     vmap,
@@ -47,7 +43,7 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-RealLike = Union[float, int, Float[Array, "..."], Int[Array, "..."]]
+RealLike = float | int | Float[Array, "..."] | Int[Array, "..."]
 
 
 class GaussianDistribution(Distribution):
@@ -91,8 +87,8 @@ class GaussianDistribution(Distribution):
 
     def __init__(
         self,
-        loc: Optional[Float[Array, " N"]],
-        scale: Optional[lx.AbstractLinearOperator],
+        loc: Float[Array, " N"] | None,
+        scale: lx.AbstractLinearOperator | None,
         validate_args=None,
     ):
         self.loc = loc
@@ -707,7 +703,7 @@ class GeneralisedExtremeValue(Distribution):
         concentration: RealLike = 0.0,
         *,
         support_continuation: bool = False,
-        validate_args: Optional[bool] = None,
+        validate_args: bool | None = None,
     ):
         loc, scale, concentration = _as_arrays(loc, scale, concentration)
         self.loc, self.scale, self.concentration = promote_shapes(

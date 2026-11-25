@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
+import typing as tp
 
-import beartype.typing as tp
 import equinox as eqx
 import jax
 from jax import vmap
@@ -107,7 +107,7 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
         self.integrator = integrator
 
     def __call__(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.Distribution:
         r"""Evaluate the likelihood function at a given predictive distribution.
 
@@ -121,7 +121,7 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
 
     @abc.abstractmethod
     def predict(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.Distribution:
         r"""Evaluate the likelihood function at a given predictive distribution.
 
@@ -151,8 +151,8 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
         y: Float[Array, "N D"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
-        mean_g: tp.Optional[Float[Array, "N D"]] = None,
-        variance_g: tp.Optional[Float[Array, "N D"]] = None,
+        mean_g: Float[Array, "N D"] | None = None,
+        variance_g: Float[Array, "N D"] | None = None,
         **_: tp.Any,
     ) -> Float[Array, " N"]:
         r"""Compute the expected log likelihood.
@@ -261,10 +261,8 @@ class AbstractHeteroscedasticLikelihood(AbstractLikelihood):
 
     def __init__(
         self,
-        noise_transform: tp.Union[
-            AbstractNoiseTransform,
-            tp.Callable[[Float[Array, ...]], Float[Array, ...]],
-        ] = SoftplusTransform(),
+        noise_transform: AbstractNoiseTransform
+        | tp.Callable[[Float[Array, ...]], Float[Array, ...]] = SoftplusTransform(),
         integrator: AbstractIntegrator = GHQuadratureIntegrator(),
     ):
         if isinstance(noise_transform, AbstractNoiseTransform):
@@ -283,10 +281,8 @@ class AbstractHeteroscedasticLikelihood(AbstractLikelihood):
 
     def __call__(
         self,
-        dist: tp.Union[npd.MultivariateNormal, GaussianDistribution],
-        noise_dist: tp.Optional[
-            tp.Union[npd.MultivariateNormal, GaussianDistribution]
-        ] = None,
+        dist: npd.MultivariateNormal | GaussianDistribution,
+        noise_dist: npd.MultivariateNormal | GaussianDistribution | None = None,
     ) -> npd.Distribution:
         return self.predict(dist, noise_dist)
 
@@ -314,8 +310,8 @@ class AbstractHeteroscedasticLikelihood(AbstractLikelihood):
         y: Float[Array, "N D"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
-        mean_g: tp.Optional[Float[Array, "N D"]] = None,
-        variance_g: tp.Optional[Float[Array, "N D"]] = None,
+        mean_g: Float[Array, "N D"] | None = None,
+        variance_g: Float[Array, "N D"] | None = None,
         **kwargs: tp.Any,
     ) -> Float[Array, " N"]:
         raise NotImplementedError
@@ -329,7 +325,7 @@ class Gaussian(AbstractLikelihood):
 
     def __init__(
         self,
-        obs_stddev: tp.Union[ScalarFloat, Float[Array, "#N"], NonNegativeReal] = 1.0,
+        obs_stddev: ScalarFloat | Float[Array, "#N"] | NonNegativeReal = 1.0,
         integrator: AbstractIntegrator = AnalyticalGaussianIntegrator(),
     ):
         r"""Initializes the Gaussian likelihood.
@@ -366,7 +362,7 @@ class Gaussian(AbstractLikelihood):
         )
 
     def predict(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> GaussianDistribution:
         r"""Evaluate the Gaussian likelihood at a predictive distribution.
 
@@ -421,7 +417,7 @@ class MultiOutputGaussian(Gaussian):
     def __init__(
         self,
         num_outputs: int,
-        obs_stddev: tp.Union[float, Float[Array, " P"]] = 1.0,
+        obs_stddev: float | Float[Array, " P"] = 1.0,
     ):
         if isinstance(obs_stddev, (int, float)):
             obs_stddev = jnp.full(num_outputs, float(obs_stddev))
@@ -452,10 +448,8 @@ class MultiOutputGaussian(Gaussian):
 class HeteroscedasticGaussian(AbstractHeteroscedasticLikelihood):
     def predict(
         self,
-        dist: tp.Union[npd.MultivariateNormal, GaussianDistribution],
-        noise_dist: tp.Optional[
-            tp.Union[npd.MultivariateNormal, GaussianDistribution]
-        ] = None,
+        dist: npd.MultivariateNormal | GaussianDistribution,
+        noise_dist: npd.MultivariateNormal | GaussianDistribution | None = None,
     ) -> GaussianDistribution:
         if noise_dist is None:
             raise ValueError(
@@ -477,7 +471,7 @@ class HeteroscedasticGaussian(AbstractHeteroscedasticLikelihood):
     def link_function(
         self,
         f: Float[Array, ...],
-        g: tp.Optional[Float[Array, ...]] = None,
+        g: Float[Array, ...] | None = None,
     ) -> npd.Normal:
         r"""The conditional observation density $p(y \mid f, g)$.
 
@@ -514,12 +508,12 @@ class HeteroscedasticGaussian(AbstractHeteroscedasticLikelihood):
         y: Float[Array, "N D"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
-        mean_g: tp.Optional[Float[Array, "N D"]] = None,
-        variance_g: tp.Optional[Float[Array, "N D"]] = None,
-        noise_stats: tp.Optional[NoiseMoments] = None,
+        mean_g: Float[Array, "N D"] | None = None,
+        variance_g: Float[Array, "N D"] | None = None,
+        noise_stats: NoiseMoments | None = None,
         return_parts: bool = False,
         **_: tp.Any,
-    ) -> tp.Union[Float[Array, " N"], tuple[Float[Array, " N"], NoiseMoments]]:
+    ) -> Float[Array, " N"] | tuple[Float[Array, " N"], NoiseMoments]:
         if mean_g is None or variance_g is None:
             raise ValueError(
                 "mean_g and variance_g must be provided for heteroscedastic models."
@@ -556,7 +550,7 @@ class Bernoulli(AbstractLikelihood):
         return npd.Bernoulli(probs=inv_probit(f))
 
     def predict(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.BernoulliProbs:
         r"""Evaluate the pointwise predictive distribution.
 
@@ -588,7 +582,7 @@ class Poisson(AbstractLikelihood):
         return npd.Poisson(rate=jnp.exp(f))
 
     def predict(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.Poisson:
         r"""Evaluate the pointwise predictive distribution.
 
@@ -621,8 +615,8 @@ class StudentT(AbstractLikelihood):
 
     def __init__(
         self,
-        degrees_of_freedom: tp.Union[ScalarFloat, PositiveReal] = 4.0,
-        scale: tp.Union[ScalarFloat, PositiveReal] = 1.0,
+        degrees_of_freedom: ScalarFloat | PositiveReal = 4.0,
+        scale: ScalarFloat | PositiveReal = 1.0,
         integrator: AbstractIntegrator = GHQuadratureIntegrator(num_points=20),
     ):
         r"""Initializes the Student's t likelihood.
@@ -669,7 +663,7 @@ class StudentT(AbstractLikelihood):
         )
 
     def predict(
-        self, dist: tp.Union[npd.MultivariateNormal, GaussianDistribution]
+        self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.StudentT:
         r"""Evaluate the pointwise predictive distribution.
 
@@ -689,14 +683,14 @@ class StudentT(AbstractLikelihood):
         return self.link_function(dist.mean)
 
 
-LatentDistribution = tp.Union[npd.MultivariateNormal, GaussianDistribution]
-ParameterLike = tp.Union[float, int, Float[Array, ""], AbstractUnwrappable]
+LatentDistribution = npd.MultivariateNormal | GaussianDistribution
+ParameterLike = float | int | Float[Array, ""] | AbstractUnwrappable
 
 _GEV_SHAPE_BOUNDS = (-0.5, 0.5)
 
 
 def _check_inside(
-    value: tp.Any, low: float, high: tp.Optional[float], name: str, hint: str
+    value: tp.Any, low: float, high: float | None, name: str, hint: str
 ) -> None:
     r"""Raise a ``ValueError`` if a concrete ``value`` is not in ``(low, high)``.
 
@@ -755,7 +749,7 @@ def _latent_draws(
 
 def _return_level_draws(
     loc: Float[Array, "S N"],
-    scale: tp.Union[Float[Array, "S N"], Float[Array, ""]],
+    scale: Float[Array, "S N"] | Float[Array, ""],
     shape: Float[Array, ""],
     return_period: RealLike,
 ) -> Float[Array, "S ..."]:
@@ -1129,10 +1123,8 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
     def __init__(
         self,
         shape: ParameterLike = 0.1,
-        noise_transform: tp.Union[
-            AbstractNoiseTransform,
-            tp.Callable[[Float[Array, ...]], Float[Array, ...]],
-        ] = LogNormalTransform(),
+        noise_transform: AbstractNoiseTransform
+        | tp.Callable[[Float[Array, ...]], Float[Array, ...]] = LogNormalTransform(),
         num_points: int = 20,
     ):
         r"""Initialise the heteroscedastic GEV likelihood.
@@ -1158,7 +1150,7 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
     def link_function(
         self,
         f: Float[Array, ...],
-        g: tp.Optional[Float[Array, ...]] = None,
+        g: Float[Array, ...] | None = None,
     ) -> GeneralisedExtremeValue:
         r"""The GEV distribution of the observations, given ``f`` and ``g``.
 
@@ -1191,7 +1183,7 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
     def predict(
         self,
         dist: LatentDistribution,
-        noise_dist: tp.Optional[LatentDistribution] = None,
+        noise_dist: LatentDistribution | None = None,
     ) -> GeneralisedExtremeValue:
         r"""The plug-in predictive distribution at the latent means.
 
@@ -1228,8 +1220,8 @@ class HeteroscedasticGEV(AbstractHeteroscedasticLikelihood):
         y: Float[Array, "N D"],
         mean: Float[Array, "N D"],
         variance: Float[Array, "N D"],
-        mean_g: tp.Optional[Float[Array, "N D"]] = None,
-        variance_g: tp.Optional[Float[Array, "N D"]] = None,
+        mean_g: Float[Array, "N D"] | None = None,
+        variance_g: Float[Array, "N D"] | None = None,
         **_: tp.Any,
     ) -> Float[Array, " N"]:
         r"""The expected log-likelihood under independent Gaussians of f and g.
@@ -1382,7 +1374,7 @@ def inv_probit(x: Float[Array, " *N"]) -> Float[Array, " *N"]:
     return 0.5 * (1.0 + jsp.special.erf(x / jnp.sqrt(2.0))) * (1 - 2 * jitter) + jitter
 
 
-NonGaussian = tp.Union[Poisson, Bernoulli, StudentT, GEV]
+NonGaussian = Poisson | Bernoulli | StudentT | GEV
 
 __all__ = [
     "GEV",
