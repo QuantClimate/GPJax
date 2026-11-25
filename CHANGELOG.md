@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **GPJax supports Python 3.12 to 3.15.** GPJax does not support Python 3.11.
-  CI tests Python 3.12, 3.13, 3.14 and 3.15.
+- **GPJax supports Python 3.12 to 3.14.** GPJax does not support Python 3.11.
+  CI tests Python 3.12, 3.13 and 3.14.
 - **beartype is no longer a runtime dependency.** Installing GPJax does not
   install beartype. The library imports its typing names from `typing` and
   `collections.abc`. The test suite and the example notebooks still check array

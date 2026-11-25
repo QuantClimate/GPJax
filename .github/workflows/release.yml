@@ -70,15 +70,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.12", "3.13", "3.14", "3.15"]
+        python-version: ["3.12", "3.13", "3.14"]
         exclude:
           # Reduce matrix size - test all Python versions on Ubuntu, subset on others
           - os: macos-latest
             python-version: "3.12"
           - os: macos-latest
             python-version: "3.13"
-          - os: macos-latest
-            python-version: "3.14"
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
