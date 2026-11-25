@@ -528,6 +528,15 @@ def fit_natgrads(
         # itself repeats the check unconditionally as a backstop.
         _reject_frozen_coordinates(model)
 
+    # The natural-gradient steps assume one latent function: one mean column
+    # and one root matrix.
+    num_latent_functions = model.model.likelihood.num_latent_functions
+    if num_latent_functions > 1:
+        raise ValueError(
+            "fit_natgrads supports one latent function only, but the likelihood "
+            f"has {num_latent_functions}. Use fit with the elbo objective instead."
+        )
+
     model = _prepare_model(model, train_data)
 
     # Split once, before the scan: the exponential-family coordinates are driven by

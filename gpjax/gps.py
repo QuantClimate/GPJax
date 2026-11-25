@@ -465,14 +465,16 @@ class NonConjugateModel(JointModel[M, K, NGL]):
         self,
         prior: Prior[M, K],
         likelihood: NGL,
-        latent: Float[Array, "N 1"] | AbstractUnwrappable | None = None,
+        latent: Float[Array, "N L"] | AbstractUnwrappable | None = None,
     ):
         r"""Construct a non-conjugate joint model.
 
         Args:
             prior (Prior): The prior process.
             likelihood (AbstractLikelihood): The observation likelihood.
-            latent: Whitened latent function values at the training inputs.
+            latent: Whitened latent function values at the training inputs,
+                of shape ``(N, L)`` with one column for each latent function
+                of the likelihood (``likelihood.num_latent_functions``).
                 ``None`` (the default) defers initialisation to first data
                 contact.
         """
@@ -492,7 +494,8 @@ class NonConjugateModel(JointModel[M, K, NGL]):
                 must cover.
             key: The random seed for the initial values.
         """
-        latent = jr.normal(key, shape=(num_datapoints, 1))
+        num_latent_functions = self.likelihood.num_latent_functions
+        latent = jr.normal(key, shape=(num_datapoints, num_latent_functions))
         return NonConjugateModel(
             prior=self.prior, likelihood=self.likelihood, latent=latent
         )
@@ -514,7 +517,7 @@ class NonConjugateModel(JointModel[M, K, NGL]):
         """
         latent = self.latent
         if latent is None:
-            latent = jnp.zeros((train_data.n, 1))
+            latent = jnp.zeros((train_data.n, self.likelihood.num_latent_functions))
         return LatentPosterior(self.prior, self.likelihood, latent, train_data)
 
 

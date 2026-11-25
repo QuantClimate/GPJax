@@ -33,6 +33,7 @@ from gpjax.distributions import (
     GaussianDistribution,
     GeneralisedExtremeValue,
     RealLike,
+    _marginals_per_latent_function,
     gev_return_level,
     gev_return_period,
 )
@@ -40,6 +41,7 @@ from gpjax.integrators import (
     AbstractIntegrator,
     AnalyticalGaussianIntegrator,
     GHQuadratureIntegrator,
+    MonteCarloIntegrator,
 )
 from gpjax.parameters import (
     NonNegativeReal,
@@ -106,6 +108,15 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
         """
         self.integrator = integrator
 
+    @property
+    def num_latent_functions(self) -> int:
+        r"""The number of latent function values for each input.
+
+        One for every likelihood except :class:`Categorical`, which has one
+        latent function for each class.
+        """
+        return 1
+
     def __call__(
         self, dist: npd.MultivariateNormal | GaussianDistribution
     ) -> npd.Distribution:
@@ -148,11 +159,12 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
 
     def expected_log_likelihood(
         self,
-        y: Float[Array, "N D"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
-        mean_g: Float[Array, "N D"] | None = None,
-        variance_g: Float[Array, "N D"] | None = None,
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
+        mean_g: Float[Array, "N L"] | None = None,
+        variance_g: Float[Array, "N L"] | None = None,
+        key: KeyArray | None = None,
         **_: tp.Any,
     ) -> Float[Array, " N"]:
         r"""Compute the expected log likelihood.
@@ -165,13 +177,17 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
             \mathbb{E}_{q(f)}\left[\log p(y|f)\right]
 
         Args:
-            y (Float[Array, 'N D']): The observed response variable.
-            mean (Float[Array, 'N D']): The variational mean.
-            variance (Float[Array, 'N D']): The variational variance.
-            mean_g (Float[Array, 'N D']): Optional moments of the latent noise
+            y (Float[Array, 'N Q']): The observed response variable.
+            mean (Float[Array, 'N L']): The variational mean, with one column
+                for each latent function.
+            variance (Float[Array, 'N L']): The variational variance.
+            mean_g (Float[Array, 'N L']): Optional moments of the latent noise
                 process for heteroscedastic likelihoods.
-            variance_g (Float[Array, 'N D']): Optional moments of the latent noise
+            variance_g (Float[Array, 'N L']): Optional moments of the latent noise
                 process for heteroscedastic likelihoods.
+            key (KeyArray | None): The random key for an integrator that draws
+                samples, such as ``MonteCarloIntegrator``. Deterministic
+                integrators ignore it.
             **_: Unused extra arguments for compatibility with specialised
                 likelihoods.
 
@@ -180,7 +196,7 @@ class AbstractLikelihood(_SummaryMixin, eqx.Module):
         """
         log_prob = vmap(lambda f, y: self.link_function(f).log_prob(y))
         return self.integrator(
-            fun=log_prob, y=y, mean=mean, variance=variance, likelihood=self
+            fun=log_prob, y=y, mean=mean, variance=variance, likelihood=self, key=key
         )
 
 
@@ -597,6 +613,103 @@ class Poisson(AbstractLikelihood):
             npd.Poisson: The pointwise predictive distribution.
         """
         return self.link_function(dist.mean)
+
+
+class _ClassIndexCategorical(npd.CategoricalLogits):
+    r"""A softmax categorical distribution that takes float class indices.
+
+    GPJax stores labels as a float array of shape ``(N, 1)``. ``log_prob``
+    removes the last axis and casts the labels to integers before it calls
+    :class:`numpyro.distributions.CategoricalLogits`.
+    """
+
+    def log_prob(self, value: Float[Array, "*label_batch 1"]) -> Float[Array, "*batch"]:
+        r"""Return the log probability of each class index.
+
+        Args:
+            value: The class indices, with a last axis of size one, for
+                example of shape ``(N, 1)``.
+
+        Returns:
+            The log probability of each label, broadcast against the batch
+            shape of the distribution.
+        """
+        return super().log_prob(jnp.asarray(value)[..., 0].astype(jnp.int32))
+
+
+class Categorical(AbstractLikelihood):
+    r"""The softmax likelihood for multi-class classification.
+
+    With $C$ classes and one latent function $f_c$ for each class,
+
+    $$
+    p(y = c \mid f) = \operatorname{softmax}(f)_c
+        = \frac{\exp(f_c)}{\sum_{j=1}^{C} \exp(f_j)}.
+    $$
+
+    A label is the class index $c \in \{0, \dots, C - 1\}$, stored as a
+    float in a target array of shape ``(N, 1)``.
+
+    Args:
+        num_classes: The number of classes $C$.
+        integrator: The integrator for the expected log likelihood. The
+            default, ``MonteCarloIntegrator()``, needs a random key: pass
+            ``key=`` to ``elbo``.
+    """
+
+    num_classes: int = eqx.field(static=True)
+
+    def __init__(
+        self,
+        num_classes: int,
+        integrator: AbstractIntegrator = MonteCarloIntegrator(),
+    ):
+        self.num_classes = num_classes
+        super().__init__(integrator=integrator)
+
+    @property
+    def num_latent_functions(self) -> int:
+        r"""One latent function for each class."""
+        return self.num_classes
+
+    def link_function(self, f: Float[Array, "... C"]) -> _ClassIndexCategorical:
+        r"""Return the softmax distribution over the classes.
+
+        Args:
+            f: The latent function values, with the classes on the last axis.
+
+        Returns:
+            The categorical distribution with logits ``f``.
+        """
+        return _ClassIndexCategorical(logits=f)
+
+    def predict(
+        self, dist: npd.MultivariateNormal | GaussianDistribution
+    ) -> _ClassIndexCategorical:
+        r"""Return the predicted class probabilities at the test inputs.
+
+        The expectation $\mathbb{E}[\operatorname{softmax}(f)]$ under the
+        Gaussian latent has no closed form. This method uses the
+        moment-scaled approximation
+
+        $$
+        p(y = c) \approx \operatorname{softmax}\left(
+            \frac{\mu_c}{\sqrt{1 + \pi \sigma_c^2 / 8}}\right)_c,
+        $$
+
+        which needs no random key. ``Bernoulli.predict`` uses the same idea.
+
+        Args:
+            dist: The latent distribution over $N$ test inputs and $C$
+                classes, flattened in blocked order (index $c N + n$), as
+                ``posterior(test_inputs)`` returns it.
+
+        Returns:
+            The categorical distribution at each test input, with batch shape
+            ``(N,)``.
+        """
+        mean, variance = _marginals_per_latent_function(dist, self.num_classes)
+        return self.link_function(mean / jnp.sqrt(1.0 + jnp.pi * variance / 8.0))
 
 
 class StudentT(AbstractLikelihood):
@@ -1374,7 +1487,7 @@ def inv_probit(x: Float[Array, " *N"]) -> Float[Array, " *N"]:
     return 0.5 * (1.0 + jsp.special.erf(x / jnp.sqrt(2.0))) * (1 - 2 * jitter) + jitter
 
 
-NonGaussian = Poisson | Bernoulli | StudentT | GEV
+NonGaussian = Poisson | Bernoulli | Categorical | StudentT | GEV
 
 __all__ = [
     "GEV",
@@ -1382,6 +1495,7 @@ __all__ = [
     "AbstractLikelihood",
     "AbstractNoiseTransform",
     "Bernoulli",
+    "Categorical",
     "Gaussian",
     "HeteroscedasticGEV",
     "HeteroscedasticGaussian",

@@ -238,6 +238,26 @@ class GaussianDistribution(Distribution):
         return _kl_divergence(self, other)
 
 
+def _marginals_per_latent_function(
+    dist: Distribution, num_latent_functions: int
+) -> tuple[Float[Array, "N L"], Float[Array, "N L"]]:
+    r"""Return the marginal means and variances, one column per latent function.
+
+    ``dist`` is flattened in blocked order: index :math:`l N + n` holds latent
+    function :math:`l` at input :math:`n`, as a posterior returns it.
+
+    Args:
+        dist: A Gaussian over ``N * L`` values in blocked order.
+        num_latent_functions: The number of latent functions ``L``.
+
+    Returns:
+        The means and the variances, each of shape ``(N, L)``.
+    """
+    mean = dist.mean.reshape(num_latent_functions, -1).T
+    variance = dist.variance.reshape(num_latent_functions, -1).T
+    return mean, variance
+
+
 def _check_and_return_dimension(
     q: GaussianDistribution, p: GaussianDistribution
 ) -> int:

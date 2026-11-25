@@ -41,6 +41,7 @@ from gpjax.kernels import (
 from gpjax.likelihoods import (
     AbstractLikelihood,
     Bernoulli,
+    Categorical,
     Gaussian,
     Poisson,
     StudentT,
@@ -722,3 +723,13 @@ def test_frozen_parameter_predicts_without_explicit_unwrap():
 
 if __name__ == "__main__":
     test_conjugate_posterior_sample_approx(10, RBF, Zero)
+
+
+# --- NonConjugateModel with more than one latent function ---
+
+
+def test_prior_times_categorical_holds_one_latent_column_per_class():
+    prior = Prior(mean_function=Zero(), kernel=RBF())
+    model = prior * Categorical(num_classes=3)
+    assert isinstance(model, NonConjugateModel)
+    assert paramax.unwrap(model.init_latent(5).latent).shape == (5, 3)

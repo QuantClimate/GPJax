@@ -2,11 +2,15 @@ import abc
 import typing as tp
 
 import jax.numpy as jnp
+import jax.random as jr
 from jaxtyping import Float
 import numpy as np
 
 from gpjax.parameters import val
-from gpjax.typing import Array
+from gpjax.typing import (
+    Array,
+    KeyArray,
+)
 
 if tp.TYPE_CHECKING:
     from gpjax.likelihoods import (
@@ -25,9 +29,9 @@ class AbstractIntegrator:
     def integrate(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
         likelihood: L | None,
     ) -> Float[Array, " N"]:
         r"""Integrate a function with respect to a Gaussian distribution.
@@ -37,9 +41,9 @@ class AbstractIntegrator:
 
         Args:
             fun (Callable): The function to be integrated.
-            y (Float[Array, 'N D']): The observed response variable.
-            mean (Float[Array, 'N D']): The mean of the variational distribution.
-            variance (Float[Array, 'N D']): The variance of the variational
+            y (Float[Array, 'N Q']): The observed response variable.
+            mean (Float[Array, 'N L']): The mean of the variational distribution.
+            variance (Float[Array, 'N L']): The variance of the variational
                 distribution.
             likelihood (AbstractLikelihood): The likelihood function.
         """
@@ -48,10 +52,11 @@ class AbstractIntegrator:
     def __call__(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
         likelihood: L | None,
+        key: KeyArray | None = None,
     ) -> Float[Array, " N"]:
         r"""Integrate a function with respect to a Gaussian distribution.
 
@@ -60,12 +65,16 @@ class AbstractIntegrator:
 
         Args:
             fun (Callable): The function to be integrated.
-            y (Float[Array, 'N D']): The observed response variable.
-            mean (Float[Array, 'N D']): The mean of the variational distribution.
-            variance (Float[Array, 'N D']): The variance of the variational
+            y (Float[Array, 'N Q']): The observed response variable.
+            mean (Float[Array, 'N L']): The mean of the variational distribution.
+            variance (Float[Array, 'N L']): The variance of the variational
                 distribution.
             likelihood (AbstractLikelihood): The likelihood function.
+            key (KeyArray | None): The random key. Only integrators that draw
+                samples, such as :class:`MonteCarloIntegrator`, use it; a
+                deterministic integrator ignores it.
         """
+        del key
         return self.integrate(fun, y, mean, variance, likelihood)
 
     def __eq__(self, other: object) -> bool:
@@ -120,9 +129,9 @@ class GHQuadratureIntegrator(AbstractIntegrator):
     def integrate(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
         likelihood: L | None,
     ) -> Float[Array, " N"]:
         r"""Compute a quadrature integral.
@@ -137,12 +146,103 @@ class GHQuadratureIntegrator(AbstractIntegrator):
         Returns:
             The expected log likelihood as an array of shape (N,).
         """
+        if mean.shape[1] > 1:
+            raise ValueError(
+                "GHQuadratureIntegrator supports one latent function only, but "
+                f"the mean has {mean.shape[1]} columns. Use MonteCarloIntegrator."
+            )
         gh_points, gh_weights = np.polynomial.hermite.hermgauss(self.num_points)
         sd = jnp.sqrt(variance)
         X = mean + jnp.sqrt(2.0) * sd * gh_points
         W = gh_weights / jnp.sqrt(jnp.pi)
         expectation = jnp.sum(fun(X, y) * W, axis=1)
         return expectation
+
+
+class MonteCarloIntegrator(AbstractIntegrator):
+    r"""Compute an integral by Monte Carlo sampling.
+
+    For independent Gaussians $f_{nl} \sim \mathcal{N}(m_{nl}, s_{nl})$ over
+    $L$ latent functions, the expectation is estimated from $S$ samples,
+
+    $$
+    \mathbb{E}_{q(f_n)}\left[F(f_n)\right] \approx \frac{1}{S}
+        \sum_{s=1}^{S} F\left(m_n + \sqrt{s_n} \odot \epsilon_{ns}\right),
+    \qquad \epsilon_{ns} \sim \mathcal{N}(0, I_L).
+    $$
+
+    Use it when the likelihood has more than one latent function, for which
+    Gauss-Hermite quadrature needs $J^L$ points. The caller supplies the random
+    key, through ``elbo(q, data, key=key)``. All standard-normal draws for one
+    evaluation come from one call with that key, of shape $(N, S, L)$, so the
+    draws are independent across data points, samples and latent functions.
+    The same key gives the same estimate.
+    """
+
+    def __init__(self, num_samples: int = 100):
+        r"""Initialise the integrator.
+
+        Args:
+            num_samples (int, optional): The number of samples $S$ for each
+                data point. Defaults to 100.
+        """
+        self.num_samples = num_samples
+
+    def __call__(
+        self,
+        fun: tp.Callable,
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
+        likelihood: L | None,
+        key: KeyArray | None = None,
+    ) -> Float[Array, " N"]:
+        r"""Estimate the integral from samples drawn with ``key``.
+
+        See :meth:`AbstractIntegrator.__call__`. Unlike the deterministic
+        integrators, this integrator passes ``key`` on to :meth:`integrate`.
+        """
+        return self.integrate(fun, y, mean, variance, likelihood, key=key)
+
+    def integrate(
+        self,
+        fun: tp.Callable,
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
+        likelihood: L | None,
+        key: KeyArray | None = None,
+    ) -> Float[Array, " N"]:
+        r"""Compute a Monte Carlo integral.
+
+        Args:
+            fun: The function to integrate, called as ``fun(samples, y)`` with
+                ``samples`` of shape ``(N, S)`` for one latent function or
+                ``(N, S, L)`` for more than one.
+            y: The observed response variable.
+            mean: The mean of the variational distribution.
+            variance: The variance of the variational distribution.
+            likelihood: The likelihood function.
+            key: The random key for the standard-normal draws.
+
+        Returns:
+            The expected log likelihood as an array of shape (N,).
+
+        Raises:
+            ValueError: If ``key`` is ``None``.
+        """
+        if key is None:
+            raise ValueError(
+                "MonteCarloIntegrator needs a random key: pass `key=` to `elbo`."
+            )
+        num_points, num_latent_functions = mean.shape
+        noise = jr.normal(
+            key, (num_points, self.num_samples, num_latent_functions), dtype=mean.dtype
+        )
+        samples = mean[:, None, :] + jnp.sqrt(variance)[:, None, :] * noise
+        if num_latent_functions == 1:
+            samples = samples[..., 0]
+        return jnp.mean(fun(samples, y), axis=1)
 
 
 class AnalyticalGaussianIntegrator(AbstractIntegrator):
@@ -160,18 +260,18 @@ class AnalyticalGaussianIntegrator(AbstractIntegrator):
     def integrate(
         self,
         fun: tp.Callable,
-        y: Float[Array, "N D"],
-        mean: Float[Array, "N D"],
-        variance: Float[Array, "N D"],
+        y: Float[Array, "N Q"],
+        mean: Float[Array, "N L"],
+        variance: Float[Array, "N L"],
         likelihood: GL,
     ) -> Float[Array, " N"]:
         r"""Compute a Gaussian integral.
 
         Args:
             fun (Callable): The Gaussian likelihood to be integrated.
-            y (Float[Array, 'N D']): The observed response variable.
-            mean (Float[Array, 'N D']): The mean of the variational distribution.
-            variance (Float[Array, 'N D']): The variance of the variational
+            y (Float[Array, 'N Q']): The observed response variable.
+            mean (Float[Array, 'N L']): The mean of the variational distribution.
+            variance (Float[Array, 'N L']): The variance of the variational
                 distribution.
             likelihood (Gaussian): The Gaussian likelihood function.
 
@@ -192,4 +292,5 @@ __all__ = [
     "AbstractIntegrator",
     "AnalyticalGaussianIntegrator",
     "GHQuadratureIntegrator",
+    "MonteCarloIntegrator",
 ]

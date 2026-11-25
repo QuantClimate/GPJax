@@ -189,11 +189,23 @@ class AbstractVariationalGaussian(AbstractVariationalFamily[L]):
 
     inducing_inputs: tp.Any
 
+    # Whether the family holds one set of variational moments for each latent
+    # function of the likelihood (for example, one for each class of a
+    # `Categorical` likelihood). Only `WhitenedVariationalGaussian` does.
+    _supports_multiple_latent_functions: tp.ClassVar[bool] = False
+
     def __init__(
         self,
         model: JointModel,
         inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"] | Real,
     ):
+        num_latent_functions = model.likelihood.num_latent_functions
+        if num_latent_functions > 1 and not self._supports_multiple_latent_functions:
+            raise ValueError(
+                f"{type(self).__name__} supports one latent function only, but "
+                f"the likelihood has {num_latent_functions}. Use "
+                "WhitenedVariationalGaussian."
+            )
         if not isinstance(inducing_inputs, Real):
             inducing_inputs = Real(inducing_inputs)
 
@@ -242,16 +254,44 @@ class VariationalGaussian(AbstractVariationalGaussian[L]):
         self,
         model: JointModel,
         inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"],
-        variational_mean: Float[Array, "N 1"] | None = None,
-        variational_root_covariance: Float[Array, "N N"] | None = None,
+        variational_mean: Float[Array, "N L"] | None = None,
+        variational_root_covariance: Float[Array, "... N N"] | None = None,
     ):
         super().__init__(model, inducing_inputs)
 
+        num_latent_functions = model.likelihood.num_latent_functions
         if variational_mean is None:
-            variational_mean = jnp.zeros((self.num_inducing, 1))
+            variational_mean = jnp.zeros((self.num_inducing, num_latent_functions))
 
         if variational_root_covariance is None:
             variational_root_covariance = jnp.eye(self.num_inducing)
+            if num_latent_functions > 1:
+                variational_root_covariance = jnp.broadcast_to(
+                    variational_root_covariance,
+                    (num_latent_functions, self.num_inducing, self.num_inducing),
+                )
+
+        # One mean column and one (M, M) root for each latent function; the
+        # root has no leading axis when there is one latent function.
+        num_inducing = self.num_inducing
+        expected_mean_shape = (num_inducing, num_latent_functions)
+        expected_root_shape = (num_inducing, num_inducing)
+        if num_latent_functions > 1:
+            expected_root_shape = (num_latent_functions, *expected_root_shape)
+        mean_shape = jnp.shape(val(variational_mean))
+        root_shape = jnp.shape(val(variational_root_covariance))
+        if mean_shape != expected_mean_shape:
+            raise ValueError(
+                f"variational_mean has shape {mean_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_mean_shape}."
+            )
+        if root_shape != expected_root_shape:
+            raise ValueError(
+                f"variational_root_covariance has shape {root_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_root_shape}."
+            )
 
         self.variational_mean = Real(variational_mean)
         self.variational_root_covariance = LowerTriangular(variational_root_covariance)
@@ -438,7 +478,14 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
     are the function values at the inducing inputs $z$ and the distribution over
     the inducing inputs is $q(u) = \mathcal{N}(Lz \mu + mz, Lz S Lz^{\top})$. We parameterise this
     over $\mu$ and $sqrt$ with $S = sqrt sqrt^{\top}$.
+
+    It is the only family that supports a likelihood with more than one latent
+    function, such as ``Categorical``. With $L$ latent functions the mean has
+    shape $(m, L)$ and the root has shape $(L, m, m)$: each latent function has
+    its own independent $q$, and all share the inducing inputs.
     """
+
+    _supports_multiple_latent_functions: tp.ClassVar[bool] = True
 
     def prior_kl(self) -> ScalarFloat:
         r"""Compute the KL-divergence between our variational approximation and
@@ -469,6 +516,12 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
 
         where $m$ is the number of inducing points.
 
+        With $L$ latent functions (for example, one for each class of a
+        ``Categorical`` likelihood), the mean has one column and the root one
+        $m \times m$ matrix for each latent function. The latent functions
+        are independent under $q$ and under the prior, so the divergence is
+        the sum of $L$ terms of the form above.
+
         Returns:
             ScalarFloat: The KL-divergence between our variational
                 approximation and the GP prior.
@@ -477,14 +530,17 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
         mu = val(self.variational_mean)
         sqrt = val(self.variational_root_covariance)
 
-        # mu^T I^{-1} mu, tr[S] = ||sqrt||_F^2 and log|S| = 2 sum log|sqrt_ii|.
-        # The absolute value keeps the log-determinant valid for any square root,
-        # though `LowerTriangular` already guarantees a positive diagonal.
+        # mu^T I^{-1} mu, tr[S] = ||sqrt||_F^2 and log|S| = 2 sum log|sqrt_ii|,
+        # each summed over the latent functions. The absolute value keeps the
+        # log-determinant valid for any square root, though `LowerTriangular`
+        # already guarantees a positive diagonal.
         mahalanobis = jnp.sum(jnp.square(mu))
         trace = jnp.sum(jnp.square(sqrt))
-        log_det_variational = 2.0 * jnp.sum(jnp.log(jnp.abs(jnp.diag(sqrt))))
+        diagonal = jnp.diagonal(sqrt, axis1=-2, axis2=-1)
+        log_det_variational = 2.0 * jnp.sum(jnp.log(jnp.abs(diagonal)))
 
-        return 0.5 * (mahalanobis + trace - self.num_inducing - log_det_variational)
+        # mu has m * L entries: the dimension of the whole Gaussian.
+        return 0.5 * (mahalanobis + trace - mu.size - log_det_variational)
 
     def condition(self, train_data: Dataset | None) -> SparsePosterior:
         r"""Condition the family, yielding its posterior process.
