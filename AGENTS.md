@@ -15,7 +15,7 @@ Core GP primitives live in `gpjax/`, with modules such as `kernels/`, `mean_func
 Create the dev environment with `uv venv && uv sync`. All commands must be prefixed with `uv run`:
 
 ```bash
-uv run poe test           # pytest with xdist (8 workers), skips `slow`
+uv run poe test           # pytest with xdist (8 workers), beartype shape checks, skips `slow`
 uv run poe test-slow      # the same, including tests marked `slow`
 uv run poe lint           # ruff format check + ruff check --fix
 uv run poe typecheck      # ty static type check on gpjax/ (every diagnostic fails)
@@ -127,7 +127,8 @@ Code follows Ruff format and Ruff lint with an 88-character limit and google doc
 ## Testing Guidelines
 Place tests next to their logical counterpart (e.g., kernel additions in `tests/test_kernels/`) and parametrize over dtype/precision combinations to guard against silent promotion. Run `uv run poe test` before every push. Execute `uv run poe all-tests` (lint + typecheck + docstrings + bench-check + pytest) for API or docs changes to confirm ancillary checks stay healthy. Every bug fix should add a regression test, and examples must be updated when behavior shifts.
 
-- `tests/conftest.py` enables `jax_enable_x64`. Tests do not check types at runtime; `uv run poe typecheck` (ty) checks them statically. `[tool.ty.rules]` in `pyproject.toml` turns off the rules that have findings in the current code. When you fix all the findings of a rule, remove its line
+- `tests/conftest.py` enables `jax_enable_x64` and installs the jaxtyping import hook with beartype over `gpjax`, so every test checks array shapes and dtypes at runtime. beartype is a dev dependency only; installing GPJax does not install it
+- `uv run poe typecheck` (ty) checks types statically. ty cannot check jaxtyping shapes; the beartype hook checks them. `[tool.ty.rules]` in `pyproject.toml` turns off the rules that have findings in the current code. When you fix all the findings of a rule, remove its line
 - pytest config treats warnings as errors (`filterwarnings = ["error", "ignore::DeprecationWarning"]`), so solve noisy deprecations locally
 - Tests run with 8 xdist workers by default; `poe test` skips tests marked `slow`
 - Hypothesis is configured with `deadline=None, max_examples=20`

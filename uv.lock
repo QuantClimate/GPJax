@@ -135,6 +135,15 @@ wheels = [
 ]
 
 [[package]]
+name = "beartype"
+version = "0.23.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/34/c0cfdaee9c796c8381439fed0fcab62810753b8b0adb1ec88fa7f41eaa5d/beartype-0.23.1.tar.gz", hash = "sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d", size = 1993714, upload-time = "2026-10-11T05:36:55.251Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/cb/2f6aa982e2860c1156830db3da7f823b71784ed7d533ca289ea9b6c6347a/beartype-0.23.1-py3-none-any.whl", hash = "sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3", size = 1582101, upload-time = "2026-10-11T05:36:52.431Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
@@ -902,6 +911,7 @@ dependencies = [
 
 [package.optional-dependencies]
 docs = [
+    { name = "beartype" },
     { name = "blackjax" },
     { name = "ipykernel" },
     { name = "ipython" },
@@ -937,6 +947,7 @@ xarray = [
 dev = [
     { name = "absolufy-imports" },
     { name = "asv" },
+    { name = "beartype" },
     { name = "codespell" },
     { name = "coverage" },
     { name = "dask" },
@@ -948,6 +959,7 @@ dev = [
     { name = "poethepoet" },
     { name = "pre-commit" },
     { name = "pytest" },
+    { name = "pytest-beartype" },
     { name = "pytest-cov" },
     { name = "pytest-pretty" },
     { name = "pytest-xdist" },
@@ -962,6 +974,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "beartype", marker = "extra == 'docs'", specifier = ">=0.20" },
     { name = "blackjax", marker = "extra == 'docs'", specifier = ">=0.9.6" },
     { name = "equinox", specifier = ">=0.11.0" },
     { name = "ipykernel", marker = "extra == 'docs'", specifier = ">=6.29" },
@@ -1008,6 +1021,7 @@ provides-extras = ["docs", "xarray"]
 dev = [
     { name = "absolufy-imports", specifier = ">=0.3.1" },
     { name = "asv", specifier = ">=0.6" },
+    { name = "beartype", specifier = ">=0.20" },
     { name = "codespell", specifier = ">=2.2.4" },
     { name = "coverage", specifier = ">=7.2.2" },
     { name = "dask", specifier = ">=2024.1" },
@@ -1019,6 +1033,7 @@ dev = [
     { name = "poethepoet", specifier = ">=0.37.0" },
     { name = "pre-commit", specifier = ">=3.2.2" },
     { name = "pytest", specifier = ">=7.2.2" },
+    { name = "pytest-beartype" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "pytest-pretty", specifier = ">=1.1.1" },
     { name = "pytest-xdist", specifier = ">=3.2.1" },
@@ -2733,6 +2748,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/79/42/bb4641652e58dedeac2ec51abc1f8cae4fee4ec63899a0999016229a0f2a/pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b", size = 1797555, upload-time = "2026-10-27T21:30:20.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588", size = 411776, upload-time = "2026-10-27T21:30:19.131Z" },
+]
+
+[[package]]
+name = "pytest-beartype"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beartype" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/c4/26581fd612a6f2cc40dae8be207cfe6de21022cdde6b3600971749947f6c/pytest_beartype-0.3.0.tar.gz", hash = "sha256:ff116d14a01f7f49f229e77c1e030fcc6b6305deaca6d54d66e5cb7014630d62", size = 81341, upload-time = "2026-09-30T05:42:14.959Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/c0/52343ecfdde2fa3c2a11e4762a70f345976036d7f77532faa31acb365fe4/pytest_beartype-0.3.0-py3-none-any.whl", hash = "sha256:f171a84089adf447c77c04cf65b86c78c7562ef7d83dbf3f057f87a9f3d964cb", size = 50390, upload-time = "2026-09-30T05:42:13.499Z" },
 ]
 
 [[package]]

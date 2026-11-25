@@ -48,18 +48,20 @@ from pathlib import Path
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
+from jaxtyping import install_import_hook
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
 config.update("jax_enable_x64", True)
 
-import gpjax as gpx
-from gpjax.parameters import val
-from gpjax.xarray import (
-    UnitSphere,
-    from_xarray,
-)
+with install_import_hook("gpjax", "beartype.beartype"):
+    import gpjax as gpx
+    from gpjax.parameters import val
+    from gpjax.xarray import (
+        UnitSphere,
+        from_xarray,
+    )
 
 key = jr.key(42)
 rng = np.random.default_rng(0)

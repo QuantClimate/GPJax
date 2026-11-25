@@ -40,6 +40,7 @@ import random
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
+from jaxtyping import install_import_hook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 try:
@@ -52,7 +53,8 @@ import networkx as nx
 config.update("jax_enable_x64", True)
 
 
-import gpjax as gpx
+with install_import_hook("gpjax", "beartype.beartype"):
+    import gpjax as gpx
 
 
 # set the default style for plotting

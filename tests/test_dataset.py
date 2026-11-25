@@ -15,6 +15,14 @@
 
 from dataclasses import is_dataclass
 
+try:
+    from beartype.roar import BeartypeCallHintParamViolation
+    from jaxtyping import TypeCheckError
+
+    ValidationErrors = (TypeError, BeartypeCallHintParamViolation, TypeCheckError)
+except ImportError:
+    ValidationErrors = ValueError
+
 from gpjax.dataset import Dataset
 from jax import config
 import jax.numpy as jnp
@@ -114,7 +122,7 @@ def test_dataset_add(n1: int, n2: int, in_dim: int) -> None:
 #     y = jnp.ones((ny, 1))
 
 #     # Ensure error is raised upon dataset creation
-#     with pytest.raises(ValueError):
+#     with pytest.raises(ValidationErrors):
 #         Dataset(X=x, y=y)
 
 
@@ -126,7 +134,7 @@ def test_dataset_add(n1: int, n2: int, in_dim: int) -> None:
 #     y = jnp.ones((n,))
 
 #     # Ensure error is raised upon dataset creation
-#     with pytest.raises(ValueError):
+#     with pytest.raises(ValidationErrors):
 #         Dataset(X=x, y=y)
 
 #     # Create dataset where input dimension is incorrectly not 2D
@@ -134,7 +142,7 @@ def test_dataset_add(n1: int, n2: int, in_dim: int) -> None:
 #     y = jnp.ones((n, 1))
 
 # # Ensure error is raised upon dataset creation
-# with pytest.raises(ValueError):
+# with pytest.raises(ValidationErrors):
 #     Dataset(X=x, y=y)
 
 

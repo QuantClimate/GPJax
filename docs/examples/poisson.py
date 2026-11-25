@@ -49,11 +49,13 @@ from jax import config
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
+from jaxtyping import install_import_hook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 
-import gpjax as gpx
+with install_import_hook("gpjax", "beartype.beartype"):
+    import gpjax as gpx
 
 
 # Enable Float64 for more stable matrix inversions.

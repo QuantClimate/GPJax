@@ -51,6 +51,9 @@ docs = [
   "sphinx-sitemap>=2.6",
   "ipykernel>=6.29",
   "jupytext>=1.16",           # py:percent notebooks read via nb_custom_formats
+  # The example notebooks check array shapes at runtime with the jaxtyping
+  # import hook, which uses beartype.
+  "beartype>=0.20",
   # -- GPJax-specific, no impulso counterpart --
   # GPJax writes $...$ maths in docstrings; impulso does not. MyST's dollarmath
   # reaches .md and notebooks but NOT docstrings, which napoleon hands to
@@ -121,6 +124,11 @@ dev = [
   "jupytext",
   # Static type checker (`poe typecheck` and .github/workflows/typecheck.yml).
   "ty>=0.0.106",
+  # Runtime check of jaxtyping array shapes and dtypes in the tests
+  # (tests/conftest.py and `poe test`). ty cannot check shapes. Dev only:
+  # installing GPJax does not install beartype.
+  "beartype>=0.20",
+  "pytest-beartype",
   "poethepoet>=0.37.0",
   "twine>=6.2.0",
   "hypothesis>=6.148.2",
@@ -188,11 +196,11 @@ help = "Audit the GitHub Actions workflows with zizmor"
 
 # Testing tasks
 [tool.poe.tasks.test]
-cmd = "pytest tests -v -n 8 -m 'not slow'"
+cmd = "pytest tests -v -n 8 -m 'not slow' --beartype-packages='gpjax'"
 help = "Run tests with pytest"
 
 [tool.poe.tasks.test-slow]
-cmd = "pytest tests -v -n 8"
+cmd = "pytest tests -v -n 8 --beartype-packages='gpjax'"
 help = "Run tests including slow tests"
 
 [tool.poe.tasks.coverage]

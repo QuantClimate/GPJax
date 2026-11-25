@@ -10,7 +10,7 @@ rendered into the docs site at `/benchmarks/` whenever docs deploy.
 1. **Always `realise(result)`** at the end of every timed call. JAX is
    async; without the `block_until_ready()` calls inside `realise`, we
    time dispatch, not work.
-2. **No hypothesis** in the bench env. It comes in via
+2. **No beartype, no hypothesis** in the bench env. Both come in via
    `tests/conftest.py`, which ASV does not load. Do not add a `conftest.py`
    here.
 3. **Pin `--machine`** when running. Trend series are keyed on machine

@@ -48,6 +48,7 @@ import jax.random as jr
 from jaxtyping import (
     Array,
     Float,
+    install_import_hook,
 )
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -57,8 +58,9 @@ from scipy.signal import sawtooth
 config.update("jax_enable_x64", True)
 
 
-import gpjax as gpx
-from gpjax.kernels.base import AbstractKernel
+with install_import_hook("gpjax", "beartype.beartype"):
+    import gpjax as gpx
+    from gpjax.kernels.base import AbstractKernel
 
 
 # set the default style for plotting

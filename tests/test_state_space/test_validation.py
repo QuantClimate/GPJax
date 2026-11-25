@@ -35,11 +35,15 @@ def test_kernel_construction_rejects_tuple_active_dims_upstream():
     multi-axis selectors (tuple/ndarray) can never reach _validate_temporal_kernel.
     This pins the upstream contract that makes the list-only check sufficient.
 
-    Construction rejects a tuple via ``_check_active_dims``, which raises a
-    ``TypeError`` reading "list or slice". The tuple therefore cannot reach
-    ``_validate_temporal_kernel``.
+    Construction rejects a tuple either via ``_check_active_dims`` (a manual
+    ``TypeError`` reading "list or slice") or, when the beartype import hook is
+    active (as in this test suite), via a jaxtyping/beartype type-check whose
+    message names the ``list[int], slice`` annotation. Either way the tuple
+    cannot reach ``_validate_temporal_kernel``.
     """
-    with pytest.raises(TypeError, match=r"list or slice"):
+    with pytest.raises(
+        Exception, match=r"list or slice|list\[int\], slice|list\[int\] \| slice"
+    ):
         gpx.kernels.Matern32(active_dims=(0, 1))
 
 
