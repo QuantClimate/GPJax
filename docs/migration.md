@@ -8,6 +8,17 @@ Releases not listed here made no breaking changes; see the
 [changelog](gh:blob/main/CHANGELOG.md) for
 the full history.
 
+## 1.1.x → 1.2.0
+
+GPJax `1.2` adds features and changes what it installs. The GPJax API does not
+change.
+
+- GPJax needs Python 3.12 or later. GPJax does not support Python 3.11.
+- GPJax no longer depends on beartype, so installing GPJax no longer installs
+  it. If your code imports `beartype`, for example to check types at runtime
+  with `jaxtyping.install_import_hook("gpjax", "beartype.beartype")`, add
+  `beartype` to your own dependencies.
+
 ## 1.0.x → 1.1.0
 
 GPJax `1.1` adds features and fixes. One change can affect existing code: the
