@@ -53,7 +53,6 @@ import jax.random as jr
 from jaxtyping import (
     Array,
     Float,
-    install_import_hook,
 )
 from matplotlib import rcParams
 import matplotlib.pyplot as plt
@@ -68,8 +67,7 @@ import pandas as pd
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
+import gpjax as gpx
 
 
 # set the default style for plotting

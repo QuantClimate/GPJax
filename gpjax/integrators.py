@@ -1,6 +1,6 @@
 import abc
+import typing as tp
 
-import beartype.typing as tp
 import jax.numpy as jnp
 from jaxtyping import Float
 import numpy as np
@@ -8,11 +8,14 @@ import numpy as np
 from gpjax.parameters import val
 from gpjax.typing import Array
 
-L = tp.TypeVar(
-    "L",
-    bound="gpjax.likelihoods.AbstractLikelihood",
-)
-GL = tp.TypeVar("GL", bound="gpjax.likelihoods.Gaussian")
+if tp.TYPE_CHECKING:
+    from gpjax.likelihoods import (
+        AbstractLikelihood,
+        Gaussian,
+    )
+
+L = tp.TypeVar("L", bound="AbstractLikelihood")
+GL = tp.TypeVar("GL", bound="Gaussian")
 
 
 class AbstractIntegrator:

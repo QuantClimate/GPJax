@@ -672,7 +672,7 @@ def test_fit_natgrads_rejects_frozen_coordinates(monkeypatch) -> None:
 def test_fit_natgrads_accepts_non_float_step_sizes(natgrad_lr) -> None:
     """The entry point honours everything ``_check_natgrad_lr`` blesses.
 
-    ``_check_natgrad_lr`` accepts an ``int`` and a 0-d array, so the beartype-checked
+    ``_check_natgrad_lr`` accepts an ``int`` and a 0-d array, so the annotated
     signature must too; testing the validator alone would not catch a mismatch.
     """
     q, D = _svgp_setup(n_data=20)
@@ -905,7 +905,7 @@ def test_check_batch_size_invalid_value(batch_size: int) -> None:
 def test_check_natgrad_lr_valid(natgrad_lr) -> None:
     """Test that valid natural-gradient step sizes pass validation.
 
-    Everything blessed here must also satisfy ``fit_natgrads``' beartype-checked
+    Everything blessed here must also satisfy ``fit_natgrads``' annotated
     signature -- see ``test_fit_natgrads_accepts_non_float_step_sizes``.
     """
     _check_natgrad_lr(natgrad_lr)

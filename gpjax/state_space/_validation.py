@@ -30,11 +30,9 @@ def _validate_temporal_kernel(kernel) -> None:
         )
 
     # GPJax constrains active_dims to list | slice at construction
-    # (kernels.base._check_active_dims rejects tuples/ndarrays with TypeError;
-    # the jaxtyping/beartype annotation list[int] | slice | None rejects them too
-    # when the import hook is active), and a slice selects a single contiguous
-    # axis given 1-D temporal data, so the only multi-axis selector that can
-    # reach here is a length>1 list.
+    # (kernels.base._check_active_dims rejects tuples/ndarrays with TypeError),
+    # and a slice selects a single contiguous axis given 1-D temporal data, so
+    # the only multi-axis selector that can reach here is a length>1 list.
     active_dims = getattr(kernel, "active_dims", None)
     if isinstance(active_dims, list) and len(active_dims) > 1:
         raise ValueError(

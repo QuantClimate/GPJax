@@ -6,7 +6,7 @@ The contract every benchmark in this directory follows:
 2. Every timed call must end with realise(result) so the GPU/dispatcher
    actually completes the work before the timer stops. JAX is async;
    without this we time dispatch, not work.
-3. No conftest.py exists in this directory — beartype and hypothesis
+3. No conftest.py exists in this directory — hypothesis
    must NOT activate during benchmark runs.
 """
 

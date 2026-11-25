@@ -12,12 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from warnings import filterwarnings
-
-from beartype.roar import BeartypeDecorHintPep585DeprecationWarning
-
-filterwarnings("ignore", category=BeartypeDecorHintPep585DeprecationWarning)
-
 from gpjax import (
     gps,
     integrators,

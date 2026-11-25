@@ -47,7 +47,6 @@ from jax import config
 import jax.numpy as jnp
 import jax.random as jr
 import jax.scipy.linalg as jsl
-from jaxtyping import install_import_hook
 import matplotlib.pyplot as plt
 try:
     from myst_nb import glue
@@ -59,8 +58,7 @@ import numpyro.distributions as npd
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
+import gpjax as gpx
 
 
 key = jr.key(123)

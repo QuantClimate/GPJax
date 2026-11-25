@@ -4,11 +4,6 @@ from dataclasses import (
 )
 from functools import singledispatch
 
-from beartype.typing import (
-    Dict,
-    Union,
-)
-
 try:
     # safely removable once jax>=0.6.0
     from jaxlib.xla_extension import PjitFunction
@@ -25,15 +20,15 @@ from gpjax.kernels import (
 )
 from gpjax.likelihoods import HeteroscedasticGaussian
 
-CitationType = Union[None, str, Dict[str, str]]
+CitationType = None | str | dict[str, str]
 
 
 @dataclass(repr=False)
 class AbstractCitation:
-    citation_key: Union[str, None] = None
-    authors: Union[str, None] = None
-    title: Union[str, None] = None
-    year: Union[str, None] = None
+    citation_key: str | None = None
+    authors: str | None = None
+    title: str | None = None
+    year: str | None = None
 
     def as_str(self) -> str:
         citation_str = f"@{self.citation_type}{{{self.citation_key},"
@@ -60,21 +55,21 @@ class NullCitation(AbstractCitation):
 
 @dataclass
 class PhDThesisCitation(AbstractCitation):
-    school: Union[str, None] = None
-    institution: Union[str, None] = None
+    school: str | None = None
+    institution: str | None = None
     citation_type: CitationType = "phdthesis"
 
 
 @dataclass
 class PaperCitation(AbstractCitation):
-    booktitle: Union[str, None] = None
+    booktitle: str | None = None
     citation_type: CitationType = "inproceedings"
 
 
 @dataclass
 class BookCitation(AbstractCitation):
-    publisher: Union[str, None] = None
-    volume: Union[str, None] = None
+    publisher: str | None = None
+    volume: str | None = None
     citation_type: CitationType = "book"
 
 

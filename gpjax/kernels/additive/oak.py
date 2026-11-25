@@ -5,7 +5,8 @@ Reference:
     Additive Gaussian Processes Revisited. ICML.
 """
 
-import beartype.typing as tp
+import typing as tp
+
 import equinox as eqx
 import jax
 from jax import lax
@@ -163,8 +164,8 @@ class OrthogonalAdditiveKernel(AbstractKernel):
     def __init__(
         self,
         base_kernels: list[AbstractKernel],
-        max_order: tp.Union[int, None] = None,
-        order_variances: tp.Union[Float[Array, " D_tilde_plus_1"], None] = None,
+        max_order: int | None = None,
+        order_variances: Float[Array, " D_tilde_plus_1"] | None = None,
         fix_base_variance: bool = True,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):

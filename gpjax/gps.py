@@ -29,9 +29,9 @@ hyperparameters. Conditioning it on data returns an immutable
 :class:`gpjax.conditioning.Posterior` that caches the factorisation.
 """
 
+import typing as tp
 from typing import Literal
 
-import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
@@ -241,7 +241,7 @@ class Prior(_SummaryMixin, eqx.Module, tp.Generic[M, K]):
         self,
         num_samples: int,
         key: KeyArray,
-        num_features: tp.Optional[int] = 100,
+        num_features: int | None = 100,
     ) -> FunctionalSample:
         r"""Approximate samples from the Gaussian process prior.
 
@@ -465,7 +465,7 @@ class NonConjugateModel(JointModel[M, K, NGL]):
         self,
         prior: Prior[M, K],
         likelihood: NGL,
-        latent: tp.Union[Float[Array, "N 1"], AbstractUnwrappable, None] = None,
+        latent: Float[Array, "N 1"] | AbstractUnwrappable | None = None,
     ):
         r"""Construct a non-conjugate joint model.
 

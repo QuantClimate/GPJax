@@ -54,19 +54,17 @@ logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
-from jaxtyping import install_import_hook
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
 config.update("jax_enable_x64", True)
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
-    from gpjax.xarray import (
-        Standardise,
-        from_xarray,
-    )
+import gpjax as gpx
+from gpjax.xarray import (
+    Standardise,
+    from_xarray,
+)
 
 key = jr.key(42)
 gpx.plotting.use_style()

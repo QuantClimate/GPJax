@@ -45,7 +45,6 @@ logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
-from jaxtyping import install_import_hook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import optax as ox
@@ -53,9 +52,8 @@ import optax as ox
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
-    import gpjax.kernels as jk
+import gpjax as gpx
+import gpjax.kernels as jk
 
 key = jr.key(123)
 

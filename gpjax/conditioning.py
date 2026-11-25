@@ -27,10 +27,10 @@ re-factorise.
 """
 
 from abc import abstractmethod
+import typing as tp
 from typing import Literal
 import warnings
 
-import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
 import jax.random as jr
@@ -74,7 +74,7 @@ def _assemble_predictive(
     *,
     covariance: Literal["dense", "diagonal"],
     subtracted_factor: Float[Array, "K N"],
-    added_factor: tp.Optional[Float[Array, "J N"]] = None,
+    added_factor: Float[Array, "J N"] | None = None,
     jitter: ScalarFloat,
 ) -> GaussianDistribution:
     r"""Assemble a predictive distribution from a mean and covariance factors.
@@ -158,7 +158,7 @@ class Posterior(eqx.Module):
     def predict(
         self,
         test_inputs: Num[Array, "N D"],
-        train_data: tp.Optional[Dataset] = None,
+        train_data: Dataset | None = None,
         *,
         covariance: Literal["dense", "diagonal"] = "dense",
     ) -> GaussianDistribution:

@@ -13,14 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-try:
-    from beartype.roar import BeartypeCallHintParamViolation
-    from jaxtyping import TypeCheckError
-
-    ValidationErrors = (TypeError, BeartypeCallHintParamViolation, TypeCheckError)
-except ImportError:
-    ValidationErrors = TypeError
-
 from collections.abc import Callable
 
 import equinox as eqx
@@ -425,13 +417,13 @@ def test_prior_sample_approx(num_datapoints, kernel, mean_function):
         p.sample_approx(-1, key)
     with pytest.raises(ValueError):
         p.sample_approx(0, key)
-    with pytest.raises(ValidationErrors):
+    with pytest.raises(ValueError):
         p.sample_approx(0.5, key)
     with pytest.raises(ValueError):
         p.sample_approx(1, key, -10)
     with pytest.raises(ValueError):
         p.sample_approx(1, key, 0)
-    with pytest.raises(ValidationErrors):
+    with pytest.raises(ValueError):
         p.sample_approx(1, key, 0.5)
 
     sampled_fn = p.sample_approx(1, key, 100)
@@ -485,13 +477,13 @@ def test_conjugate_posterior_sample_approx(num_datapoints, kernel, mean_function
     # p.sample_approx(-1, D, key)
     # with pytest.raises(ValueError):
     # p.sample_approx(0, D, key)
-    # with pytest.raises(ValidationErrors):
+    # with pytest.raises(ValueError):
     # p.sample_approx(0.5, D, key)
     # with pytest.raises(ValueError):
     # p.sample_approx(1, D, key, -10)
     # with pytest.raises(ValueError):
     # p.sample_approx(1, D, key, 0)
-    # with pytest.raises(ValidationErrors):
+    # with pytest.raises(ValueError):
     # p.sample_approx(1, D, key, 0.5)
 
     sampled_fn = p.sample_approx(1, D, key, num_features=100)

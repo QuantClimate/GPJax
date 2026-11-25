@@ -96,7 +96,6 @@ from jax import config
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from jaxtyping import install_import_hook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import paramax
@@ -105,24 +104,23 @@ from utils import clean_legend
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
-    import gpjax.kernels as jk
-    from gpjax.natural_gradients import (
-        expectation_from_moments,
-        moments_from_expectation,
-        moments_from_natural,
-        natural_from_moments,
-        natural_gradient_step,
-        partition_variational,
-    )
-    from gpjax.objectives import dual_elbo, elbo
-    from gpjax.parameters import LowerTriangular, Real
-    from gpjax.variational_families import (
-        DualVariationalGaussian,
-        VariationalGaussian,
-        WhitenedVariationalGaussian,
-    )
+import gpjax as gpx
+import gpjax.kernels as jk
+from gpjax.natural_gradients import (
+    expectation_from_moments,
+    moments_from_expectation,
+    moments_from_natural,
+    natural_from_moments,
+    natural_gradient_step,
+    partition_variational,
+)
+from gpjax.objectives import dual_elbo, elbo
+from gpjax.parameters import LowerTriangular, Real
+from gpjax.variational_families import (
+    DualVariationalGaussian,
+    VariationalGaussian,
+    WhitenedVariationalGaussian,
+)
 
 key = jr.key(123)
 

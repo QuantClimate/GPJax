@@ -46,7 +46,6 @@ import jax.scipy as jsp
 from jaxtyping import (
     Array,
     Float,
-    install_import_hook,
 )
 import lineax as lx
 import matplotlib.pyplot as plt
@@ -56,8 +55,7 @@ import optax as ox
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
+import gpjax as gpx
 
 
 identity_matrix = jnp.eye

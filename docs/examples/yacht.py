@@ -37,7 +37,6 @@ logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
-from jaxtyping import install_import_hook
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 try:
@@ -57,8 +56,7 @@ from sklearn.preprocessing import StandardScaler
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
+import gpjax as gpx
 
 
 # set the default style for plotting

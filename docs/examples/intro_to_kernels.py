@@ -38,7 +38,6 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import (
     Float,
-    install_import_hook,
 )
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -49,8 +48,7 @@ from sklearn.preprocessing import StandardScaler
 config.update("jax_enable_x64", True)
 
 
-with install_import_hook("gpjax", "beartype.beartype"):
-    import gpjax as gpx
+import gpjax as gpx
 
 
 key = jr.key(42)

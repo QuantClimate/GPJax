@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 import jax.numpy as jnp
 from jaxtyping import (
     Float,
@@ -63,7 +64,7 @@ class GraphKernel(StationaryKernel):
     """
 
     smoothness: tp.Any
-    num_vertex: tp.Union[ScalarInt, None]
+    num_vertex: ScalarInt | None
     laplacian: Float[Array, "N N"]
     eigenvalues: Float[Array, "N 1"]
     eigenvectors: Float[Array, "N N"]
@@ -72,13 +73,11 @@ class GraphKernel(StationaryKernel):
     def __init__(
         self,
         laplacian: Num[Array, "N N"],
-        active_dims: tp.Union[list[int], slice, None] = None,
-        lengthscale: tp.Union[
-            ScalarFloat, Float[Array, " D"], AbstractUnwrappable
-        ] = 1.0,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
+        active_dims: list[int] | slice | None = None,
+        lengthscale: ScalarFloat | Float[Array, " D"] | AbstractUnwrappable = 1.0,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
         smoothness: ScalarFloat = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = EigenKernelComputation(),
     ):
         """Initializes the kernel.
