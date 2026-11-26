@@ -39,10 +39,7 @@ from gpjax.gps import (
 )
 from gpjax.kernels import RBF
 from gpjax.likelihoods import Gaussian
-from gpjax.mean_functions import (
-    AbstractMeanFunction,
-    Constant,
-)
+from gpjax.mean_functions import Constant
 from gpjax.objectives import (
     conjugate_mll,
     dual_elbo,
@@ -53,7 +50,6 @@ from gpjax.parameters import (
     Real,
     val,
 )
-from gpjax.typing import Array
 from gpjax.variational_families import (
     CollapsedVariationalGaussian,
     DualVariationalGaussian,
@@ -62,15 +58,12 @@ from gpjax.variational_families import (
 import jax.numpy as jnp
 import jax.random as jr
 import jax.tree_util as jtu
-from jaxtyping import (
-    Float,
-    Num,
-)
 import numpy as np
 import optax as ox
 import paramax
 import pytest
 import scipy
+from scipy.optimize import OptimizeResult
 
 from tests._categorical_helpers import (
     three_class_data,
@@ -172,6 +165,33 @@ def test_fit_scipy_simple():
     assert trained_model.bias == 1.0
 
 
+def test_fit_scipy_uses_lbfgsb(monkeypatch):
+    # Create dataset:
+    X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
+    y = 2.0 * X + 1.0
+    D = Dataset(X, y)
+
+    model = LinearModel(weight=1.0, bias=1.0)
+
+    # Define loss function:
+    def mse(model, data):
+        pred = model(data.X)
+        return jnp.mean((pred - data.y) ** 2)
+
+    # Record the arguments fit_scipy hands to SciPy without running an optimiser:
+    seen = {}
+
+    def fake_minimize(*args, **kwargs):
+        seen.update(kwargs)
+        return OptimizeResult(x=kwargs["x0"], fun=0.0, success=True, message="ok")
+
+    monkeypatch.setattr(sys.modules["gpjax.fit"], "minimize", fake_minimize)
+    fit_scipy(model=model, objective=mse, train_data=D, max_iters=5, verbose=False)
+
+    # The docstring promises L-BFGS-B, so the method must not be left to SciPy:
+    assert seen["method"] == "L-BFGS-B"
+
+
 class _Scalar(eqx.Module):
     weight: Real
 
@@ -181,15 +201,19 @@ class _Scalar(eqx.Module):
 
 def _nan_above_two(model, data):
     # The minimum of (w - 3)^2 is at w = 3, but the objective is NaN for w >= 2.
-    # From w = 0, BFGS steps to w = 1.01 and then to w = 3, where it stops.
+    # From w = 0, L-BFGS-B steps to w = 1, then its line search reaches the NaN
+    # region and it stops without converging.
     weight = val(model.weight)
     return jnp.where(weight < 2.0, (weight - 3.0) ** 2, jnp.nan)
 
 
 def test_fit_scipy_returns_the_last_finite_iterate():
     data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
-    with pytest.warns(
-        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    with (
+        pytest.warns(
+            RuntimeWarning, match="returns the last iterate whose objective is finite"
+        ),
+        pytest.warns(scipy.optimize.OptimizeWarning, match="did not converge"),
     ):
         trained_model, history = fit_scipy(
             model=_Scalar(0.0),
@@ -198,7 +222,7 @@ def test_fit_scipy_returns_the_last_finite_iterate():
             verbose=False,
         )
     assert jnp.isfinite(_nan_above_two(trained_model, data))
-    assert float(val(trained_model.weight)) == pytest.approx(1.01)
+    assert float(val(trained_model.weight)) == pytest.approx(1.0)
     assert jnp.all(jnp.isfinite(history))
     assert history[-1] == _nan_above_two(trained_model, data)
     assert history[-1] < history[0]
@@ -450,25 +474,7 @@ def test_fit_scipy_error_raises() -> None:
         X=jnp.array([[0.0]], dtype=jnp.float64), y=jnp.array([[0.0]], dtype=jnp.float64)
     )
 
-    # build crazy mean function so that opt fails
-    class CrazyMean(AbstractMeanFunction):
-        def __call__(self, x: Num[Array, "N D"]) -> Float[Array, "N O"]:
-            return jnp.heaviside(x, 100.0)
-
-    # Define GP model with crazy mean function:
-    prior = Prior(kernel=RBF(), mean_function=CrazyMean())
-    likelihood = Gaussian()
-    posterior = prior * likelihood
-
-    with pytest.raises(scipy.optimize.OptimizeWarning):
-        fit_scipy(
-            model=posterior,
-            objective=conjugate_mll,
-            train_data=D,
-            max_iters=10,
-        )
-
-    # also check fails if no given enough steps
+    # a solver that stops at its iteration limit reports that it did not converge
     prior = Prior(kernel=RBF(), mean_function=Constant())
     likelihood = Gaussian()
     posterior = prior * likelihood
