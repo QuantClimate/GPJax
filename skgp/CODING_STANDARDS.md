@@ -2,6 +2,8 @@
 
 Read during review. Anything a tool can check lives in the tools, not here: `ruff` (lint and format), `ty` (types) and `pytest`, run by the commit hook and CI. This file holds the judgement calls.
 
+The rules in `CODING_STANDARDS.md` at the repository root also apply to skgp. Among them: a test fits a well-posed problem, and a test whose pass depends on how far the optimiser got is deleted, not repaired.
+
 ## Code
 
 - **User choices are settings or arguments; constants live in one place.** First ask whether a value is a choice a user would reasonably make for their own model or fit: π is a constant, the number of optimisation iterations is a user's choice. A user's choice is a setting of the model or an argument of the method, with its default in the signature. In `src/`, every other number, and every name of an optimiser, that sets how skgp fits, checks or reports is a documented field of `Constant` in `src/skgp/_constants.py`, read as `C.<NAME>` after `from skgp._constants import Constant as C`. Lookup tables, objects, the text of messages, number formats, values written into a type (such as `Literal[...]`) and the defaults written in signatures stay where they are used. (`ruff` flags a number in a comparison anywhere else in `src/`; a number used any other way is a review call.)

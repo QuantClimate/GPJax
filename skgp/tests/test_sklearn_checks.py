@@ -44,5 +44,7 @@ def expected_failures(estimator):
     ],
     expected_failed_checks=expected_failures,
 )
+# scikit-learn's checks fit with a small iteration limit on purpose.
+@pytest.mark.filterwarnings("ignore::skgp.ConvergenceWarning")
 def test_each_estimator_passes_scikit_learns_checks(estimator, check):
     check(estimator)

@@ -80,5 +80,8 @@ pythonpath = ["tests"]
 filterwarnings = [
     "error::DeprecationWarning:skgp.*",
     "error::DeprecationWarning:gpjax.*",
+    # A fit that does not settle fails the test, unless the test expects the
+    # warning with `pytest.warns` or ignores it with a stated reason.
+    "error::skgp.ConvergenceWarning",
 ]
 

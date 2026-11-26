@@ -83,6 +83,9 @@ def test_a_gpjax_mean_function_sees_your_units_and_keeps_a_held_value():
     assert learned_mean_function(fitted) == {"constant": pytest.approx(80)}
 
 
+# Only the sum of the two constants can be learned, so the fit does not settle.
+# This test checks only how the sum is named and reported.
+@pytest.mark.filterwarnings("ignore::skgp.ConvergenceWarning")
 def test_a_sum_of_gpjax_mean_functions_is_named_and_reported_part_by_part():
     model = GPRegressor(
         "x",

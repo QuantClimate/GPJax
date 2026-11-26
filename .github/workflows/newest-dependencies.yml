@@ -1,0 +1,88 @@
+name: "Newest dependencies"
+
+# uv.lock holds each dependency at one version, so CI never sees a break that a
+# newer release brings to new installs. Each week this workflow re-resolves
+# uv.lock to the newest releases that `exclude-newer` permits, then runs GPJax's
+# and skgp's full test suites. If a suite fails, it opens one issue (or comments
+# on the open one). It never commits the re-resolved lockfile.
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Monday 03:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: "Newest dependencies: ${{ matrix.package }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read # checkout
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [gpjax, skgp]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Re-resolve uv.lock to the newest releases
+        run: |
+          uv lock --upgrade
+          git diff --stat uv.lock
+
+      - name: Run GPJax's tests
+        if: matrix.package == 'gpjax'
+        run: |
+          uv sync
+          uv run pytest tests -n auto -m ""
+
+      - name: Run skgp's tests
+        if: matrix.package == 'skgp'
+        working-directory: skgp
+        run: |
+          uv sync --package skgp
+          uv run --package skgp pytest -m ""
+
+  report:
+    name: "Report a failure"
+    needs: tests
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or comment on the issue
+
+    steps:
+      - name: Open or update the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="Tests fail with the newest dependencies"
+          NUMBER=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          BODY="The weekly run of newest-dependencies.yml failed: $RUN_URL. It re-resolves uv.lock to the newest releases, so a newer release of a dependency breaks GPJax or skgp for new installs. The job log shows the re-resolved versions (\`git diff --stat uv.lock\`) and the failing tests."
+          if [ -n "$NUMBER" ]; then
+            gh issue comment "$NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label dependencies --body "$BODY"
+          fi
