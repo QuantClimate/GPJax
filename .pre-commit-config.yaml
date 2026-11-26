@@ -1,0 +1,26 @@
+# prek (https://github.com/j178/prek) runs these hooks before each commit. Thus you find a
+# mistake here, not in CI. Set up once with `uv run prek install`; run by hand with
+# `uv run prek run --all-files`. The tools come from the lockfile, so a hook and CI
+# always use the same versions. The hooks check the same files as CI.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check
+        entry: uv run --frozen ruff check
+        language: system
+        types: [python]
+        files: ^(gpjax|tests|benchmarks)/
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types: [python]
+        files: ^(gpjax|tests|benchmarks)/
+      - id: ty
+        name: ty check
+        entry: uv run --frozen ty check gpjax
+        language: system
+        # ty checks the whole package, so it runs when any of these change.
+        files: ^(gpjax/|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false

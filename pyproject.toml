@@ -1,14 +1,15 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
 
 [project]
 name = "gpjax"
-dynamic = ["version"]
+version = "1.3.0"
 description = 'Gaussian processes in JAX.'
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE.txt"]
 keywords = ["gaussian-processes jax machine-learning bayesian"]
 authors = [{ name = "Thomas Pinder", email = "tompinder@live.co.uk" }]
 classifiers = [
@@ -108,7 +109,8 @@ managed = true
 dev = [
   "asv>=0.6",
   "ruff>=0.6",
-  "pre-commit>=3.2.2",
+  # Runs the hooks in .pre-commit-config.yaml before each commit.
+  "prek>=0.5.10",
   "interrogate>=1.5.0",
   "codespell>=2.2.4",
   "pytest>=7.2.2",
@@ -152,8 +154,12 @@ Documentation = "https://gpjax.quantclimate.com/"
 Issues = "https://github.com/QuantClimate/GPJax/issues"
 Source = "https://github.com/QuantClimate/GPJax"
 
-[tool.hatch.version]
-path = "gpjax/__init__.py"
+[tool.uv.build-backend]
+# The package sits at the repository root (`gpjax/`), not under `src/`.
+module-root = ""
+# The source distribution also carries the tests, so that a downstream build
+# (for example, a conda-forge recipe) can run them.
+source-include = ["tests/**", "CHANGELOG.md", "CITATION.bib"]
 
 [tool.poe.tasks]
 # Run Github actions locally
@@ -366,11 +372,16 @@ invalid-type-arguments = "ignore"
 incompatible-mutable-override = "ignore"
 incompatible-attribute-override = "ignore"
 
-[tool.ruff] # https://github.com/charliermarsh/ruff
+[tool.ruff]
+# One ruff configuration for the whole repository. The per-file ignores below
+# relax rules only for GPJax's code; all other code gets the full set.
 fix = true
 cache-dir = "~/.cache/ruff"
 # The example notebooks moved under docs/, so "docs/" now covers them too.
 exclude = ["docs/"]
+# The pre-commit hooks give ruff explicit file paths; this keeps `exclude` in
+# force for them too.
+force-exclude = true
 line-length = 88
 src = ["gpjax", "tests", "benchmarks"]
 target-version = "py312"
@@ -408,37 +419,21 @@ select = [
   "SIM",
   # ruff-specific
   "RUF",
+  # flake8-pytest-style; for example, a `pytest.raises` must give the message
+  # that it expects (PT011)
+  "PT",
 ]
 ignore = [
   # calls in argument defaults
   "B008",
-  # PEP 695 type-parameter syntax (`class Prior[K: AbstractKernel]`). Moving
-  # the public Equinox generics to it is a separate change.
-  "UP046",
-  "UP047",
-  # space before : (needed for how black formats slicing)
-  # "E203",  # not yet implemented
   # module level import not at top of file
   "E402",
   # do not assign a lambda expression, use a def
   "E731",
+  # line too long: the formatter wraps code; it does not wrap long comments and strings
   "E501",
-  "S303",
-  "S307",
-  "RET504",
-  "S101",
-  "F722",
-  'PLR2004',
+  # too many arguments in a function definition
   "PLR0913",
-  # too-many-positional-arguments. Kernels, likelihoods and variational
-  # families are constructed positionally with defaults (e.g.
-  # `RBF(active_dims, lengthscale, variance, n_dims, compute_engine)`);
-  # forcing keyword-only arguments would break those public signatures.
-  # Paired with PLR0913 above, which ignores the same shape of constructor.
-  "PLR0917",
-  # intentional math Unicode (σ, ℓ) in docstrings and comments
-  "RUF002",
-  "RUF003",
 ]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
@@ -452,13 +447,32 @@ force-wrap-aliases = true
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"gpjax/__init__.py" = ['I', 'F401', 'E402', 'D104']
-"gpjax/scan.py" = ["PLR0913"]
+"gpjax/**" = [
+  # jaxtyping shape annotations such as `Float[Array, "N D"]` are strings that
+  # are not Python expressions
+  "F722",
+  # PEP 695 type-parameter syntax (`class Prior[K: AbstractKernel]`). Moving
+  # the public Equinox generics to it is a separate change.
+  "UP046",
+  "UP047",
+  # too-many-positional-arguments. Kernels, likelihoods and variational
+  # families are constructed positionally with defaults (e.g.
+  # `RBF(active_dims, lengthscale, variance, n_dims, compute_engine)`);
+  # forcing keyword-only arguments would break those public signatures.
+  "PLR0917",
+  # comparisons against array ranks and fixed numerical limits, such as
+  # `x.ndim == 2`
+  "PLR2004",
+  # intentional math Unicode (σ, ℓ) in docstrings and comments
+  "RUF002",
+  "RUF003",
+]
+"gpjax/__init__.py" = ["I", "F401", "E402", "D104"]
 "gpjax/citation.py" = ["F811"]
 "gpjax/gps.py" = ["F811"]
-"tests/test_objectives.py" = ["PLR0913"]
-"docs/examples/barycentres.py" = ["PLR0913"]
-"tests/*.py" = ["PLW0108"]
+# A test takes its fixtures and parameters as arguments, and there can be many.
+# A test shows its values as literals, so a number in a comparison is fine.
+"tests/**" = ["F722", "PLR0917", "PLR2004", "PLW0108", "RUF002", "RUF003"]
 
 [tool.interrogate]
 ignore-init-method = true

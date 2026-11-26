@@ -59,7 +59,7 @@ TESTED_KERNELS = [
 
 @pytest.mark.parametrize("kernel", TESTED_KERNELS)
 @pytest.mark.parametrize(
-    "active_dims, n_dims",
+    ("active_dims", "n_dims"),
     (p := [([3], 1), ([2, 3, 4], 3), (slice(1, 3), 2), (None, None)]),
     ids=[f"active_dims={x[0]}-n_dims={x[1]}" for x in p],
 )
@@ -80,10 +80,10 @@ def test_init_dims(kernel: type[AbstractKernel], active_dims, n_dims):
     assert k.n_dims == n_dims
 
     # test that error is raised if they are incompatible
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="length of active_dims"):
         kernel(active_dims=[3], n_dims=2)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="length of active_dims"):
         kernel(active_dims=slice(2), n_dims=1)
 
     # test that error is raised if types are wrong

@@ -1124,7 +1124,8 @@ def test_collapsed_prior_kl_gradients_match_the_oracle(
         eqx.filter(reference_grads, eqx.is_inexact_array)
     )
 
-    assert leaves and len(leaves) == len(reference_leaves)
+    assert leaves
+    assert len(leaves) == len(reference_leaves)
     for leaf, reference_leaf in zip(leaves, reference_leaves, strict=True):
         np.testing.assert_allclose(
             np.asarray(leaf), np.asarray(reference_leaf), rtol=1e-8, atol=1e-10

@@ -12,7 +12,7 @@ GPJax is a Gaussian process library built on JAX. The API mirrors GP mathematics
 Core GP primitives live in `gpjax/`, with modules such as `kernels/`, `mean_functions.py`, `likelihoods.py`, `variational_families.py`, `conditioning.py`, and `linalg/` mirroring the mathematical decomposition of a GP. Two subpackages hold larger model families: `gpjax/state_space/` (state-space GPs and SDE solvers) and `gpjax/models/` (OILMM). Tests that shadow these modules live in `tests/`—keep filenames aligned (for example, `tests/test_likelihoods.py`) so stack traces map to the right file. Example notebooks are `py:percent` scripts in `docs/examples/` and are rendered into the Sphinx site from `docs/` (output goes to `docs/_build/html`). Benchmarks live in `benchmarks/` (ASV). The root `static/` directory holds the JOSS paper and `CONTRIBUTING.md`; documentation assets live in `docs/static/`. Repo automation resides in the root config files.
 
 ## Build, Test, and Development Commands
-Create the dev environment with `uv venv && uv sync`. All commands must be prefixed with `uv run`:
+Create the dev environment with `uv venv && uv sync`, then install the pre-commit hooks with `uv run prek install`. All commands must be prefixed with `uv run`:
 
 ```bash
 uv run poe test           # pytest with xdist (8 workers), beartype shape checks, skips `slow`
@@ -115,6 +115,15 @@ Parameter constraints and bijections come from `numpyro.distributions` (`biject_
 ### Dataset (`gpjax/dataset.py`)
 
 `Dataset` is a `@dataclass(slots=True)` registered as a JAX pytree. Requires 2D arrays: `X` shape `(N, D)`, `y` shape `(N, Q)`. Warns if inputs are not float64.
+
+## Changing the public API
+
+Other packages use GPJax's public API. For example, skgp calls `gpx.fit`, `gpx.gps.Prior`, `gpx.objectives.elbo` and `gpx.Dataset`. When you rename or remove a public function, class, argument or module:
+
+1. Add the new name. Keep the old name. Make it emit a `DeprecationWarning` with `warnings.warn`, and give the new name in the message.
+2. Remove the old name only in a major release (for example, 2.0.0), and only after skgp stops using it.
+
+skgp's tests fail on a GPJax `DeprecationWarning`, so skgp changes to the new name before GPJax removes the old name. `docs/contributing.md` gives the same rule to human contributors.
 
 ## Coding Style & Naming Conventions
 Code follows Ruff format and Ruff lint with an 88-character limit and google docstring convention. Use `snake_case` for functions, `UpperCamelCase` for classes, and keep module paths lowercase. Public APIs should ship with type hints—prefer jaxtyping annotations for shapes/dtypes—and docstrings describing inputs, outputs, and key JAX transforms (`jit`, `vmap`, etc.).

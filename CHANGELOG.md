@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **GPJax builds with `uv_build`.** `pyproject.toml` holds the version, and
+  `gpjax.__version__` reads it from the metadata of the installed package.
+  Thus `import gpjax` needs an installed GPJax; a source folder on `sys.path`
+  alone is not sufficient.
+
 ## [1.3.0] — 2026-11-25
 
 ### Added

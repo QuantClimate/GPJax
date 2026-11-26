@@ -185,7 +185,7 @@ def test_matern52_small_dt_process_noise_is_finite_and_near_psd(dt):
 
 
 @pytest.mark.parametrize(
-    "sde_cls,state_dim",
+    ("sde_cls", "state_dim"),
     [(Matern12SDE, 1), (Matern32SDE, 2), (Matern52SDE, 3)],
 )
 def test_matern_sde_is_jittable_and_vmap_compatible(sde_cls, state_dim):
@@ -436,7 +436,7 @@ def test_continuous_lyapunov_stationarity(sde_name):
 
 
 @pytest.mark.parametrize(
-    "matern_cls,matern_state_dim",
+    ("matern_cls", "matern_state_dim"),
     [(Matern12SDE, 1), (Matern32SDE, 2), (Matern52SDE, 3)],
 )
 @pytest.mark.parametrize("truncation_order", [1, 3])
