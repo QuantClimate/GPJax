@@ -188,7 +188,9 @@ def _nan_above_two(model, data):
 
 def test_fit_scipy_returns_the_last_finite_iterate():
     data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
-    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+    with pytest.warns(
+        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    ):
         trained_model, history = fit_scipy(
             model=_Scalar(0.0),
             objective=_nan_above_two,
@@ -206,7 +208,9 @@ def test_fit_returns_the_last_finite_iterate():
     # With SGD at step size 0.1, w_k = 3 - 3 * 0.8^k. Thus w_4 = 1.7712 is the
     # last iterate below 2, and the objective is NaN from w_5 on.
     data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
-    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+    with pytest.warns(
+        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    ):
         trained_model, history = fit(
             model=_Scalar(0.0),
             objective=_nan_above_two,
@@ -216,9 +220,32 @@ def test_fit_returns_the_last_finite_iterate():
             verbose=False,
         )
     assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
-    assert history.shape == (5,)
-    assert jnp.all(jnp.isfinite(history))
-    assert history[-1] == _nan_above_two(trained_model, data)
+    assert history.shape == (10,)
+    assert jnp.all(jnp.isfinite(history[:5]))
+    assert not jnp.any(jnp.isfinite(history[5:]))
+    assert history[4] == _nan_above_two(trained_model, data)
+
+
+def test_fit_returns_the_last_finite_iterate_inside_jit():
+    # The same run as above, inside `eqx.filter_jit`: the same iterate comes
+    # back, and there is no warning.
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+
+    @eqx.filter_jit
+    def train(model):
+        return fit(
+            model=model,
+            objective=_nan_above_two,
+            train_data=data,
+            optim=ox.sgd(0.1),
+            num_iters=10,
+            verbose=False,
+            safe=False,
+        )
+
+    trained_model, history = train(_Scalar(0.0))
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (10,)
 
 
 def test_fit_keeps_the_history_when_the_objective_stays_finite():
@@ -245,7 +272,9 @@ def _nan_gradient_at_zero(model, data):
 
 def test_fit_lbfgs_returns_the_last_finite_iterate():
     data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
-    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+    with pytest.warns(
+        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    ):
         trained_model, final_loss = fit_lbfgs(
             model=_Scalar(0.0),
             objective=_nan_gradient_at_zero,

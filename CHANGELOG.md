@@ -20,13 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`fit`, `fit_scipy` and `fit_lbfgs` no longer return a model with a NaN
   objective** ([#850](https://github.com/QuantClimate/GPJax/issues/850)). An
   optimiser can make a last step to a point where the objective is not finite.
-  For example, SciPy's BFGS can accept such a step, and a NaN gradient makes
-  the parameters NaN. Before, the three optimisers returned the model at that
-  point, without a message. Now, if an earlier iterate has a finite objective,
-  they return the last such iterate and give a `RuntimeWarning`. The history
-  of `fit` and `fit_scipy` stops at that iterate, so its last value is the
-  objective value of the returned model. The final loss value of `fit_lbfgs`
-  is the objective value of the returned model.
+  SciPy's BFGS can accept such a step. Also, a NaN gradient makes the
+  parameters NaN. Before, the three optimisers returned the model at that
+  point, without a message. Now they return the last iterate whose objective
+  is finite, and give a `RuntimeWarning`. If no iterate has a finite
+  objective, they return the model after the last step, as before.
+  - `fit` keeps the full history. All values after the returned iterate are
+    not finite. `fit` also works inside `jax.jit` and `jax.vmap`, where it
+    gives no warning.
+  - The history of `fit_scipy` stops at the returned iterate.
+  - The final loss of `fit_lbfgs` is the objective of the returned iterate.
 
 ## [1.3.0] — 2026-11-25
 
