@@ -202,6 +202,61 @@ def test_fit_scipy_returns_the_last_finite_iterate():
     assert history[-1] < history[0]
 
 
+def test_fit_returns_the_last_finite_iterate():
+    # With SGD at step size 0.1, w_k = 3 - 3 * 0.8^k. Thus w_4 = 1.7712 is the
+    # last iterate below 2, and the objective is NaN from w_5 on.
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+        trained_model, history = fit(
+            model=_Scalar(0.0),
+            objective=_nan_above_two,
+            train_data=data,
+            optim=ox.sgd(0.1),
+            num_iters=10,
+            verbose=False,
+        )
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (5,)
+    assert jnp.all(jnp.isfinite(history))
+    assert history[-1] == _nan_above_two(trained_model, data)
+
+
+def test_fit_keeps_the_history_when_the_objective_stays_finite():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    trained_model, history = fit(
+        model=_Scalar(0.0),
+        objective=_nan_above_two,
+        train_data=data,
+        optim=ox.sgd(0.1),
+        num_iters=4,
+        verbose=False,
+    )
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (4,)
+
+
+def _nan_gradient_at_zero(model, data):
+    # The value is (w - 3)^2 everywhere, but the gradient is NaN at w <= 0. The
+    # line search of L-BFGS rejects a step to a non-finite value, so the NaN
+    # comes from the gradient at the start: the first update is NaN.
+    weight = val(model.weight)
+    return (weight - 3.0) ** 2 + 0.0 * jnp.sqrt(jnp.maximum(-weight, 0.0))
+
+
+def test_fit_lbfgs_returns_the_last_finite_iterate():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+        trained_model, final_loss = fit_lbfgs(
+            model=_Scalar(0.0),
+            objective=_nan_gradient_at_zero,
+            train_data=data,
+            max_iters=10,
+        )
+    assert float(val(trained_model.weight)) == 0.0
+    assert final_loss == _nan_gradient_at_zero(trained_model, data)
+    assert final_loss == 9.0
+
+
 def test_fit_lbfgs_simple():
     # Create dataset:
     X = jnp.linspace(0.0, 10.0, 100).reshape(-1, 1)
