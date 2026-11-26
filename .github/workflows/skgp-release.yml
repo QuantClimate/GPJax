@@ -303,7 +303,7 @@ jobs:
           printf '%s\n' "$CHANGELOG" > release-notes.md
           # GPJax's latest release stays the repository's "Latest" release.
           args=(
-            --title "skgp $VERSION"
+            --title "skgp ${VERSION#skgp-v}"
             --notes-file release-notes.md
             --target "$GITHUB_SHA"
             --latest=false

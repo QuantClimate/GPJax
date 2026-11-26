@@ -71,6 +71,8 @@ def test_a_score_is_a_mapping_that_never_changes_and_prints_as_a_table(line_fit)
     assert crps.startswith("  neg_crps  -0.23")
 
 
+# This test checks what the schema sees, not the fit, which need not settle.
+@pytest.mark.filterwarnings("ignore::skgp.ConvergenceWarning")
 def test_rows_are_checked_once_by_your_schema_and_may_hold_the_target(line_fit):
     schema = Recorder()
     with_schema = GPRegressor(

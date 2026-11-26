@@ -49,7 +49,15 @@ jobs:
 
       # Run the unit tests and build the coverage report
       - name: Run Tests
-        run: uv run pytest tests -v --cov=./gpjax --cov-report=xml:./coverage.xml
+        # The same command as `uv run poe coverage`, so CI also checks that the
+        # poe task works.
+        run: uv run poe coverage
+
+      # `poe test` once crashed before it collected a test. Collecting checks
+      # that it starts.
+      - name: Check that poe test starts
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run poe test --collect-only -q
 
 
       - name: Upload code coverage

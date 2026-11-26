@@ -55,11 +55,15 @@ jobs:
         uv add safety
         uv run safety check --json --output safety-report.json
 
+    # The first run writes every finding, low severity included, to the log.
+    # The second writes the medium- and high-severity findings to
+    # bandit-report.json.
     - name: Run bandit security linter
       continue-on-error: true
       run: |
         uv add bandit[toml]
-        uv run bandit -r gpjax/ -f json -o bandit-report.json -ll
+        uv run bandit -r gpjax/ skgp/src/ || true
+        uv run bandit -r gpjax/ skgp/src/ -f json -o bandit-report.json -ll
 
     - name: Upload dependency scan results
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

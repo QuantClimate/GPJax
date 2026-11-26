@@ -126,6 +126,7 @@ def test_a_variance_is_relative_to_the_targets_variance():
     "lengthscale", [500.0, jnp.array([500.0])], ids=["a number", "an array of one"]
 )
 def test_a_kernel_with_one_length_scale_keeps_one(lengthscale):
+    # A short fit: this test checks how many lengthscales are reported.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         fitted = GPRegressor(
@@ -142,6 +143,7 @@ def test_a_kernel_with_one_length_scale_keeps_one(lengthscale):
 def test_a_value_gpjax_holds_as_a_plain_array_is_learned_and_reported():
     # GPJax's polynomial kernel keeps a `shift` given as an array as it is.
     kernel = gpx.kernels.Polynomial(shift=jnp.array(1.0))
+    # A short fit: this test checks that the shift is learned and reported.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         fitted = GPRegressor("x", "y", kernel=kernel).fit(sine_data(40), iterations=5)
@@ -202,6 +204,8 @@ SCALED_FITS = {
 def predicted(model, data, rows, quantity, fit_settings):
     """What the model, fitted to `data`, predicts at `rows`: the mean of a regressor, the
     probability of the second class of a classifier."""
+    # The tests compare a fit in one set of units with the same fit in other units.
+    # skgp rescales the inputs, so both fits take the same steps, finished or not.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         fitted = model.fit(data, **fit_settings)
@@ -282,6 +286,7 @@ def test_a_fitted_model_with_a_gpjax_kernel_predicts_the_same_after_pickling(
 
 
 def test_a_verbose_fit_names_a_gpjax_kernel_by_its_classes():
+    # A two-step fit: this test checks only the log record that names the kernel.
     with capturing_records() as records, warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         GPRegressor("week", "sales", kernel=season_kernel()).fit(
