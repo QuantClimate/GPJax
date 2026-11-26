@@ -53,6 +53,12 @@ jobs:
         # poe task works.
         run: uv run poe coverage
 
+      # `poe test` once crashed before it collected a test. Collecting checks
+      # that it starts.
+      - name: Check that poe test starts
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run poe test --collect-only -q
+
 
       - name: Upload code coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

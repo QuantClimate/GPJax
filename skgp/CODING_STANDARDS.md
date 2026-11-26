@@ -2,7 +2,7 @@
 
 Read during review. Anything a tool can check lives in the tools, not here: `ruff` (lint and format), `ty` (types) and `pytest`, run by the commit hook and CI. This file holds the judgement calls.
 
-The rules in `CODING_STANDARDS.md` at the repository root also apply to skgp. Among them: a test fits a well-posed problem, and a test whose pass depends on how far the optimiser got is deleted, not repaired.
+The rules in `CODING_STANDARDS.md` at the repository root also apply to skgp.
 
 ## Code
 

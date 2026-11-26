@@ -110,6 +110,7 @@ def test_a_printed_fitted_model_with_many_columns_lists_the_first_ten():
         f"c{i}": [float(row * (i + 2) % 7) for row in range(6)] for i in range(12)
     }
     rows = pl.DataFrame({**columns, "y": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]})
+    # A one-step fit on purpose: this test checks how an unfinished fit is printed.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         fitted = GPRegressor(features=list(columns), target="y").fit(rows, iterations=1)

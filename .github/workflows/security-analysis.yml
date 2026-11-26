@@ -55,13 +55,14 @@ jobs:
         uv add safety
         uv run safety check --json --output safety-report.json
 
-    # The findings go to the log, where a reader of the run sees them, and to
-    # bandit-report.json. The step does not block a pull request.
+    # The first run writes every finding, low severity included, to the log.
+    # The second writes the medium- and high-severity findings to
+    # bandit-report.json.
     - name: Run bandit security linter
       continue-on-error: true
       run: |
         uv add bandit[toml]
-        uv run bandit -r gpjax/ skgp/src/ -ll
+        uv run bandit -r gpjax/ skgp/src/ || true
         uv run bandit -r gpjax/ skgp/src/ -f json -o bandit-report.json -ll
 
     - name: Upload dependency scan results

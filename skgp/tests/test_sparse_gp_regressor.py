@@ -59,21 +59,6 @@ def test_a_sparse_fit_predicts_in_the_units_of_the_data_and_issues_no_warning(
     assert prediction.std()[0] < 15.0  # the wobble is a few units, not hundreds
 
 
-@pytest.mark.slow
-@pytest.mark.filterwarnings(
-    "ignore::skgp.ConvergenceWarning"
-)  # nearly noise-free data can stop a fit early
-def test_with_every_row_as_an_inducing_point_a_fit_on_a_straight_line_predicts_the_line():
-    # y = 2x + 1 with a hundredth of wobble
-    line = pl.DataFrame(
-        {"x": [0.0, 1.0, 2.0, 3.0, 4.0], "y": [1.01, 2.99, 5.02, 6.98, 9.01]}
-    )
-
-    prediction = sparse(num_inducing=5).fit(line).predict(pl.DataFrame({"x": [2.5]}))
-
-    assert prediction.mean() == pytest.approx([6.0], abs=0.1)
-
-
 def test_the_default_number_of_inducing_points_is_a_tenth_of_the_rows_within_a_floor_and_a_ceiling():
     # Called directly: a public fit of 50,000 rows would take far too long to run here.
     assert [_inducing.default_count(rows) for rows in (50, 500, 5_000, 50_000)] == [

@@ -9,7 +9,7 @@ When responding locally or writing documents, always use ASD-STE100 Simplified T
 GPJax is a Gaussian process library built on JAX. The API mirrors GP mathematics: you compose a `Prior` (kernel + mean function), multiply it by a `Likelihood` to get a `JointModel`, condition that model on data to get a `Posterior`, then optimise an objective. All modules are Equinox `eqx.Module` subclasses, so they are JAX pytrees and work with `jit`, `vmap`, and `grad`.
 
 ## Project Structure & Module Organization
-Core GP primitives live in `gpjax/`, with modules such as `kernels/`, `mean_functions.py`, `likelihoods.py`, `variational_families.py`, `conditioning.py`, and `linalg/` mirroring the mathematical decomposition of a GP. Two subpackages hold larger model families: `gpjax/state_space/` (state-space GPs and SDE solvers) and `gpjax/models/` (OILMM). Tests that shadow these modules live in `tests/`—keep filenames aligned (for example, `tests/test_likelihoods.py`) so stack traces map to the right file. Example notebooks are `py:percent` scripts in `docs/examples/` and are rendered into the Sphinx site from `docs/` (output goes to `docs/_build/html`). Benchmarks live in `benchmarks/` (ASV). The root `static/` directory holds the JOSS paper and `CONTRIBUTING.md`; documentation assets live in `docs/static/`. Repo automation resides in the root config files.
+Core GP primitives live in `gpjax/`, with modules such as `kernels/`, `mean_functions.py`, `likelihoods.py`, `variational_families.py`, `conditioning.py`, and `linalg/` mirroring the mathematical decomposition of a GP. Two subpackages hold larger model families: `gpjax/state_space/` (state-space GPs and SDE solvers) and `gpjax/models/` (OILMM). Tests that shadow these modules live in `tests/`. Example notebooks are `py:percent` scripts in `docs/examples/` and are rendered into the Sphinx site from `docs/` (output goes to `docs/_build/html`). Benchmarks live in `benchmarks/` (ASV). The root `static/` directory holds the JOSS paper and `CONTRIBUTING.md`; documentation assets live in `docs/static/`. Repo automation resides in the root config files.
 
 ## skgp
 
@@ -64,12 +64,11 @@ Code follows Ruff format and Ruff lint with an 88-character limit and google doc
 - Notebooks must stay in `py:percent` format so CI linters can process them consistently
 
 ## Testing Guidelines
-CI runs the full test suites of GPJax and skgp on every pull request. Locally, run only the tests for the code you change, for example `uv run pytest tests/test_fit.py`. `CODING_STANDARDS.md` holds the rules that review applies to tests.
+CI runs the full test suites of GPJax and skgp on every pull request that can affect them. Locally, run only the tests for the code you change, for example `uv run pytest tests/test_fit.py`. `CODING_STANDARDS.md` holds the rules that review applies to tests.
 
 - `tests/conftest.py` enables `jax_enable_x64` and installs the jaxtyping import hook with beartype over `gpjax`, so every test checks array shapes and dtypes at runtime. beartype is a dev dependency only; installing GPJax does not install it
 - `uv run poe typecheck` (ty) checks types statically. ty cannot check jaxtyping shapes; the beartype hook checks them. `[tool.ty.rules]` in `pyproject.toml` turns off the rules that have findings in the current code. When you fix all the findings of a rule, remove its line
 - pytest config treats warnings as errors (`filterwarnings = ["error", "ignore::DeprecationWarning"]`), so solve noisy deprecations locally
-- `poe test` runs 8 xdist workers and skips tests marked `slow`
 - Hypothesis is configured with `deadline=None, max_examples=20`
 
 ## Examples

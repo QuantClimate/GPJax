@@ -51,6 +51,7 @@ def diverged_fit():
     data = pl.DataFrame(
         {"x": np.linspace(0.0, 1.0, 10), "y": rng.choice([-1.0, 1.0], 10) * 1.7e308}
     )
+    # The values overflow on purpose: this fixture is a fit that fails.
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore", skgp.ConvergenceWarning)
         return GPRegressor(features=["x"], target="y").fit(data)
