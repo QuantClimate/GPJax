@@ -83,6 +83,9 @@ def test_fit_scipy_recovers_matern52_hyperparameters_at_N_2000():
     assert history[-1] < history[0]
 
 
+# The test stops L-BFGS-B after 10 iterations to stay fast, so SciPy can report
+# that it did not converge. Convergence is not what this test checks.
+@pytest.mark.filterwarnings("ignore::scipy.optimize.OptimizeWarning")
 def test_fit_scipy_returns_state_space_posterior_type():
     n = 50
     X, y = _build_matern52_synthetic(n=n, seed=1)
@@ -104,6 +107,9 @@ def test_fit_scipy_returns_state_space_posterior_type():
     assert isinstance(fitted_posterior, StateSpaceConjugateModel)
 
 
+# The test stops L-BFGS-B after 10 iterations to stay fast, so SciPy can report
+# that it did not converge. Convergence is not what this test checks.
+@pytest.mark.filterwarnings("ignore::scipy.optimize.OptimizeWarning")
 def test_fit_scipy_warns_on_unsorted_input_and_sorts_internally():
     """Passing unsorted X should emit a UserWarning and still complete successfully."""
     n = 50
