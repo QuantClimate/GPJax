@@ -93,6 +93,11 @@ xarray = [
   "xarray>=2024.1",
 ]
 
+[tool.uv.workspace]
+# skgp (skgp/) is a second package in this repository; see
+# docs/adr/0003-skgp-as-workspace-member.md. One uv.lock covers both packages.
+members = ["skgp"]
+
 [tool.uv]
 exclude-newer = "7 days"
 # qc-core is QuantClimate's own package, published by PyPI trusted publishing
@@ -209,7 +214,7 @@ cmd = "pytest tests -v -n 8 --beartype-packages='gpjax'"
 help = "Run tests including slow tests"
 
 [tool.poe.tasks.coverage]
-cmd = "pytest . -v --cov=./gpjax --cov-report=xml:./coverage.xml"
+cmd = "pytest tests -v --cov=./gpjax --cov-report=xml:./coverage.xml"
 help = "Run tests with coverage reporting"
 
 [tool.poe.tasks.typecheck]
@@ -383,7 +388,7 @@ exclude = ["docs/"]
 # force for them too.
 force-exclude = true
 line-length = 88
-src = ["gpjax", "tests", "benchmarks"]
+src = ["gpjax", "tests", "benchmarks", "skgp/src", "skgp/tests"]
 target-version = "py312"
 
 [tool.ruff.lint]
@@ -473,6 +478,7 @@ convention = "google"
 # A test takes its fixtures and parameters as arguments, and there can be many.
 # A test shows its values as literals, so a number in a comparison is fine.
 "tests/**" = ["F722", "PLR0917", "PLR2004", "PLW0108", "RUF002", "RUF003"]
+"skgp/tests/**" = ["PLR0917", "PLR2004"]
 
 [tool.interrogate]
 ignore-init-method = true

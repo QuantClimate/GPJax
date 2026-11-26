@@ -49,7 +49,7 @@ jobs:
 
       # Run the unit tests and build the coverage report
       - name: Run Tests
-        run: uv run pytest . -v --cov=./gpjax --cov-report=xml:./coverage.xml
+        run: uv run pytest tests -v --cov=./gpjax --cov-report=xml:./coverage.xml
 
 
       - name: Upload code coverage
