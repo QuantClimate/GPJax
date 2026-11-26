@@ -422,15 +422,15 @@ def test_prior_sample_approx(num_datapoints, kernel, mean_function):
     p = Prior(kernel=kern, mean_function=mean_function())
     key = jr.key(123)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_samples must be a positive integer"):
         p.sample_approx(-1, key)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_samples must be a positive integer"):
         p.sample_approx(0, key)
     with pytest.raises(ValidationErrors):
         p.sample_approx(0.5, key)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_features must be a positive integer"):
         p.sample_approx(1, key, -10)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_features must be a positive integer"):
         p.sample_approx(1, key, 0)
     with pytest.raises(ValidationErrors):
         p.sample_approx(1, key, 0.5)

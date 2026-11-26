@@ -166,7 +166,7 @@ class TestJaxGatherNd:
 class TestCalculateHeatSemigroup:
     """Tests for calculate_heat_semigroup utility function."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def graph_kernel(self):
         n_vertices = 10
         graph = nx.path_graph(n_vertices)

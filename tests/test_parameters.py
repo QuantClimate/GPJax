@@ -117,7 +117,7 @@ def test_lower_triangular_positive_diagonal():
 
 
 @pytest.mark.parametrize(
-    "factory, storage_field",
+    ("factory", "storage_field"),
     [
         (
             lambda v: __import__(

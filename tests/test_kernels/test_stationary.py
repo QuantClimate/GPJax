@@ -99,7 +99,7 @@ def test_init(kernel_request):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("lengthscale", LENGTHSCALES)
 @pytest.mark.parametrize("variance", VARIANCES)
@@ -165,7 +165,9 @@ def test_init_lengthscales(kernel: type[StationaryKernel], lengthscale):
         k = kernel(lengthscale="invalid type")
 
     # Check that error is raised if lengthscale is not compatible with n_dims
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match="compatible with the number of input dimensions"
+    ):
         k = kernel(lengthscale=jnp.ones(2), n_dims=1)
 
 
@@ -185,7 +187,7 @@ def test_init_variances(kernel: type[StationaryKernel], variance):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("lengthscale", LENGTHSCALES)
 @pytest.mark.parametrize("variance", VARIANCES)
@@ -206,7 +208,7 @@ def test_gram(test_init: StationaryKernel, n: int):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("lengthscale", LENGTHSCALES)
 @pytest.mark.parametrize("variance", VARIANCES)

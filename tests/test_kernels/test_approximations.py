@@ -153,7 +153,7 @@ def test_missing_spectral_density_raises_error(kernel):
 
 @pytest.mark.parametrize("kernel", [RBF, Matern12, Matern32, Matern52])
 def test_stochastic_init(kernel: type[StationaryKernel]):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Please specify the n_dims argument"):
         # n_dims is not specified, but should be
         RFF(base_kernel=kernel(), num_basis_fns=10)
 

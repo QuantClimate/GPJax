@@ -127,4 +127,5 @@ def test_objectives_shared_dataset_is_deterministic():
 
     a = make_shared_dataset(200)
     b = make_shared_dataset(200)
-    assert (a.X == b.X).all() and (a.y == b.y).all()
+    assert (a.X == b.X).all()
+    assert (a.y == b.y).all()

@@ -233,7 +233,7 @@ def test_state_space_mll_chunked_memory_scaling():
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "obs_stddev,lengthscale,time_range",
+    ("obs_stddev", "lengthscale", "time_range"),
     [
         (1e-8, 1.0, 10.0),
         (0.1, 0.01, 10.0),

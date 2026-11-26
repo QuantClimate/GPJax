@@ -305,17 +305,25 @@ def test_continuation_gradient_points_into_the_support():
         d_y, d_loc, d_scale, d_xi = gradient(
             lower_end - distance_below, LOC, SCALE, 0.3
         )
-        assert d_y > 0.0 and d_loc < 0.0 and d_scale > 0.0 and d_xi < 0.0
+        assert d_y > 0.0
+        assert d_loc < 0.0
+        assert d_scale > 0.0
+        assert d_xi < 0.0
 
     upper_end = LOC + SCALE / 0.3
     for distance_above in (0.1, 10.0, 1e3):
         d_y, d_loc, d_scale, d_xi = gradient(
             upper_end + distance_above, LOC, SCALE, -0.3
         )
-        assert d_y < 0.0 and d_loc > 0.0 and d_scale > 0.0 and d_xi > 0.0
+        assert d_y < 0.0
+        assert d_loc > 0.0
+        assert d_scale > 0.0
+        assert d_xi > 0.0
 
     d_y, d_loc, d_scale, _ = gradient(LOC - 50.0 * SCALE, LOC, SCALE, 0.0)
-    assert d_y > 0.0 and d_loc < 0.0 and d_scale > 0.0
+    assert d_y > 0.0
+    assert d_loc < 0.0
+    assert d_scale > 0.0
 
 
 @pytest.mark.parametrize("xi", XI_AWAY_FROM_GUMBEL)
