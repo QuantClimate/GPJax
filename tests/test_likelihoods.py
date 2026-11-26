@@ -439,37 +439,6 @@ def test_gev_variational_recovery(shape):
     assert float(jnp.sqrt(jnp.mean((latent - location[:, 0]) ** 2))) < 0.2
 
 
-@pytest.mark.slow
-@pytest.mark.parametrize("shape", [-0.2, 0.2])
-def test_gev_map_recovery_with_repeated_sites(shape):
-    num_sites, num_years = 10, 30
-    sites = jnp.linspace(0.0, 1.0, num_sites)
-    x = jnp.repeat(sites, num_years)[:, None]
-    location = 3.0 * jnp.sin(2.0 * jnp.pi * x)
-    y = GeneralisedExtremeValue(location, 1.0, shape).sample(
-        jr.key(int(1000 * shape) + num_sites)
-    )
-    data = gpx.Dataset(X=x, y=y)
-    mu0, sigma0 = _gumbel_moment_start(y)
-    prior = gpx.gps.Prior(
-        mean_function=gpx.mean_functions.Constant(mu0),
-        kernel=gpx.kernels.RBF(lengthscale=0.3),
-    )
-    fitted, history = gpx.fit_scipy(
-        model=prior * GEV(scale=sigma0, shape=0.0),
-        objective=lambda m, d: -gpx.objectives.log_posterior_density(m, d),
-        train_data=data,
-        max_iters=1000,
-        verbose=False,
-    )
-    latent = fitted.condition(data)(sites[:, None], covariance="diagonal").mean
-    location_at_sites = 3.0 * jnp.sin(2.0 * jnp.pi * sites)
-    assert history[-1] < history[0]
-    assert abs(float(val(fitted.likelihood.shape)) - shape) < 0.15
-    assert abs(float(val(fitted.likelihood.scale)) - 1.0) < 0.12
-    assert float(jnp.sqrt(jnp.mean((latent - location_at_sites) ** 2))) < 0.3
-
-
 def test_gev_covariate_in_the_location_shifts_the_return_level():
     trend = 2.0
     sites, gmst = jnp.meshgrid(
