@@ -73,6 +73,12 @@ markers = ["slow: takes over a second; skipped unless run with -m \"\""]
 # The tests import `tests/helpers.py` as `helpers`, whichever import mode pytest uses.
 pythonpath = ["tests"]
 # A GPJax deprecation fails skgp's tests, so skgp moves to the new API before
-# GPJax removes the old one (the rule in GPJax's AGENTS.md).
-filterwarnings = ["error::DeprecationWarning:gpjax.*"]
+# GPJax removes the old one (the rule in GPJax's AGENTS.md). GPJax warns with
+# `stacklevel=2`, so Python gives the warning to the module that calls GPJax:
+# `skgp.*` catches a deprecated call from skgp's code, and `gpjax.*` catches
+# a deprecated call inside GPJax.
+filterwarnings = [
+    "error::DeprecationWarning:skgp.*",
+    "error::DeprecationWarning:gpjax.*",
+]
 

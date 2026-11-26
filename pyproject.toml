@@ -214,7 +214,7 @@ cmd = "pytest tests -v -n 8 --beartype-packages='gpjax'"
 help = "Run tests including slow tests"
 
 [tool.poe.tasks.coverage]
-cmd = "pytest . -v --cov=./gpjax --cov-report=xml:./coverage.xml"
+cmd = "pytest tests -v --cov=./gpjax --cov-report=xml:./coverage.xml"
 help = "Run tests with coverage reporting"
 
 [tool.poe.tasks.typecheck]

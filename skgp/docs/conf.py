@@ -200,9 +200,9 @@ html_theme_options = {
 }
 html_context = {
     "github_user": "QuantClimate",
-    "github_repo": "skgp",
+    "github_repo": "GPJax",
     "github_version": "main",
-    "doc_path": "docs",
+    "doc_path": "skgp/docs",
 }
 
 # -- Open Graph link previews (sphinxext-opengraph) ---------------------------

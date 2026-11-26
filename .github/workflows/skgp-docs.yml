@@ -1,8 +1,8 @@
 name: "skgp docs"
 
-# Builds skgp's documentation for every change that can affect it, and deploys
-# it to https://skgp.quantclimate.com on a push to main, as build_docs.yml does
-# for GPJax's documentation. The build uses the GPJax code in the same commit,
+# Builds skgp's documentation for each pull request that can affect it, and
+# deploys it to https://skgp.quantclimate.com on every push to main, as
+# build_docs.yml does for GPJax's documentation. The build uses the GPJax code in the same commit,
 # so `gpjax/**` is in the paths. A draft pull request is not built: check
 # locally while the work is in progress.
 on:
@@ -16,17 +16,10 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/skgp-docs.yml"
+  # Every push to main deploys, as build_docs.yml does for GPJax's docs.
   push:
     branches:
       - main
-    paths:
-      - "skgp/docs/**"
-      - "skgp/src/**"
-      - "skgp/pyproject.toml"
-      - "gpjax/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/skgp-docs.yml"
   workflow_dispatch:
 
 # Every job grants itself the narrowest scope it needs. The Cloudflare token is
@@ -95,7 +88,7 @@ jobs:
     permissions:
       contents: read # checkout, for skgp/docs/wrangler.jsonc
     concurrency:
-      group: cloudflare-docs
+      group: cloudflare-skgp-docs
       cancel-in-progress: false
 
     steps:

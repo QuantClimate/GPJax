@@ -1,6 +1,6 @@
 # Advanced use
 
-skgp fits its models with [GPJax](https://github.com/JaxGaussianProcesses/GPJax), a library built on JAX. You never need to touch it for ordinary regression. Most of this page is for the cases skgp does not cover, such as fitting a model GPJax offers and skgp does not. Its last section is about sending skgp's log records to Python's `logging`.
+skgp fits its models with [GPJax](https://github.com/QuantClimate/GPJax), a library built on JAX. You never need to touch it for ordinary regression. Most of this page is for the cases skgp does not cover, such as fitting a model GPJax offers and skgp does not. Its last section is about sending skgp's log records to Python's `logging`.
 
 You do not need it for the underlying curve without measurement noise. `fitted.predict(new, include_noise=False)` gives that directly, in your own units: the same mean as a prediction for a new observation, with a spread that leaves out the noise.
 

@@ -1,7 +1,7 @@
 // Cloudflare Workers configuration for the docs: the Sphinx HTML build is
 // served as static assets, with no Worker code. The `deploy` job in
-// .github/workflows/docs.yml deploys it on every push to main that changes the
-// docs or the source.
+// .github/workflows/skgp-docs.yml at the repository root deploys it on every
+// push to main.
 {
   "name": "skgp-docs",
   "compatibility_date": "2026-11-17",

@@ -2,7 +2,7 @@ skgp lets anyone fit Gaussian process models from dataframes, without needing to
 
 ## Where skgp lives
 
-skgp is the `skgp/` folder of the GPJax repository (`QuantClimate/GPJax`), a member of the uv workspace whose root is GPJax (`docs/adr/0003-skgp-as-workspace-member.md` at the repository root). Paths in this file are relative to `skgp/`. In development skgp uses the GPJax code in the same commit, so a GPJax change and the skgp change that it needs go in one pull request. The repository root holds the one `uv.lock`, the ruff configuration, the `[tool.uv]` settings and the prek hooks. Run skgp's commands from `skgp/` with `--package skgp`, for example `uv sync --package skgp` and `uv run --package skgp pytest -m ""`. skgp's releases are tagged `skgp-v0.1.0`; GPJax's are tagged `v1.3.0`.
+skgp is the `skgp/` folder of the GPJax repository (`QuantClimate/GPJax`). It is a member of the uv workspace whose root is GPJax (`docs/adr/0003-skgp-as-workspace-member.md` at the repository root). Paths in this file are relative to `skgp/`. In development skgp uses the GPJax code in the same commit, so a GPJax change and the skgp change that it needs go in one pull request. The repository root holds the one `uv.lock`, the ruff configuration, the `[tool.uv]` settings and the prek hooks. Run skgp's commands from `skgp/` with `--package skgp`, for example `uv sync --package skgp` and `uv run --package skgp pytest -m ""`. skgp's releases are tagged `skgp-v0.1.0`; GPJax's are tagged `v1.3.0`.
 
 skgp has no users outside QuantClimate yet: change any API freely, with no compatibility shims or deprecations, and weigh each decision on its merits rather than on what changing it later would cost.
 
@@ -22,7 +22,7 @@ skgp's own context: `GLOSSARY.md` and `docs/adr/` in `skgp/`. GPJax's ADRs are i
 
 ## Docs site
 
-`docs/` is a Sphinx site, built the same way as GPJax's and Impulso's: `uv run --group docs sphinx-build -W --keep-going -b html docs docs/_build/html`. The Python code of the landing page and of the saving page runs in the test suite (`tests/test_readme.py`). The `skgp docs` workflow (`.github/workflows/skgp-docs.yml` at the repository root) builds the site on pull requests and deploys it to https://skgp.quantclimate.com from main.
+`docs/` is a Sphinx site, built the same way as GPJax's and Impulso's: `uv run --package skgp --group docs sphinx-build -W --keep-going -b html docs docs/_build/html`. The Python code of the landing page and of the saving page runs in the test suite (`tests/test_readme.py`). The `skgp docs` workflow (`.github/workflows/skgp-docs.yml` at the repository root) builds the site on pull requests and deploys it to https://skgp.quantclimate.com from main.
 
 ## CI
 

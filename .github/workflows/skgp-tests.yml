@@ -135,12 +135,14 @@ jobs:
 
       - name: Install skgp with the oldest permitted GPJax
         # `--no-sources` ignores `[tool.uv.sources]`, so GPJax comes from PyPI
-        # and not from the workspace.
+        # and not from the workspace. `uv pip` reads `[tool.uv]` from
+        # skgp/pyproject.toml, not from the root, so the root's 7-day
+        # `exclude-newer` is given here.
         run: |
           OLDEST=$(python -c 'import re, tomllib; deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]; print(next(re.search(r">=([0-9.]+)", d).group(1) for d in deps if re.match(r"gpjax\b", d)))')
           echo "Oldest permitted GPJax: $OLDEST"
           uv venv --python 3.12 .venv-oldest
-          uv pip install --python .venv-oldest --no-sources . --group pyproject.toml:dev "gpjax==$OLDEST"
+          uv pip install --python .venv-oldest --no-sources --exclude-newer "7 days" . --group pyproject.toml:dev "gpjax==$OLDEST"
 
       - name: Run tests
         run: |
