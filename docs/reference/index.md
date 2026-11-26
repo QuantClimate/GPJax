@@ -19,6 +19,7 @@ objectives
 fit
 variational_families
 models
+experimentation
 state_space
 linalg
 integrators

@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Predictively oriented posteriors (experimental).**
+  `experimentation.predictively_oriented.condition(model, train_data, key)`
+  conditions a GP with a Gaussian likelihood on data with the predictively
+  oriented posterior of Lau, Knoblauch and Sharrock (2026, arXiv:2610.03201).
+  It keeps the kernel hyperparameters of the model, fits the observation noise
+  standard deviation again on a validation part of the data, and draws
+  particles with the paper's Replica-Gibbs sampler. The returned
+  `PredictivelyOrientedPosterior` predicts an equal-weight mixture of
+  Gaussians. Give `inducing_inputs` for the sparse variant. The API of
+  `gpjax.experimentation` can change in any release.
+
 ### Changed
 
 - **GPJax builds with `uv_build`.** `pyproject.toml` holds the version, and
