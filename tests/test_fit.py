@@ -50,6 +50,7 @@ from gpjax.objectives import (
 )
 from gpjax.parameters import (
     PositiveReal,
+    Real,
     val,
 )
 from gpjax.typing import Array
@@ -169,6 +170,36 @@ def test_fit_scipy_simple():
 
     # Test stop_gradient on bias (static field, not trained):
     assert trained_model.bias == 1.0
+
+
+class _Scalar(eqx.Module):
+    weight: Real
+
+    def __init__(self, weight: float):
+        self.weight = Real(jnp.array(weight))
+
+
+def _nan_above_two(model, data):
+    # The minimum of (w - 3)^2 is at w = 3, but the objective is NaN for w >= 2.
+    # From w = 0, BFGS steps to w = 1.01 and then to w = 3, where it stops.
+    weight = val(model.weight)
+    return jnp.where(weight < 2.0, (weight - 3.0) ** 2, jnp.nan)
+
+
+def test_fit_scipy_returns_the_last_finite_iterate():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with pytest.warns(RuntimeWarning, match="last finite iterate"):
+        trained_model, history = fit_scipy(
+            model=_Scalar(0.0),
+            objective=_nan_above_two,
+            train_data=data,
+            verbose=False,
+        )
+    assert jnp.isfinite(_nan_above_two(trained_model, data))
+    assert float(val(trained_model.weight)) == pytest.approx(1.01)
+    assert jnp.all(jnp.isfinite(history))
+    assert history[-1] == _nan_above_two(trained_model, data)
+    assert history[-1] < history[0]
 
 
 def test_fit_lbfgs_simple():

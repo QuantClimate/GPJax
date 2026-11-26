@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Thus `import gpjax` needs an installed GPJax; a source folder on `sys.path`
   alone is not sufficient.
 
+### Fixed
+
+- **`fit_scipy` no longer returns a model with a NaN objective**
+  ([#850](https://github.com/QuantClimate/GPJax/issues/850)). SciPy's BFGS
+  can accept a last step to a point where the objective is NaN. Before,
+  `fit_scipy` returned the model at that point, without a message. Now it
+  returns the last iterate where the objective is finite, and it gives a
+  `RuntimeWarning`. The history stops at that iterate, so its last value is
+  the objective value of the returned model.
+
 ## [1.3.0] — 2026-11-25
 
 ### Added

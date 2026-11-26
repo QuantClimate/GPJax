@@ -15,6 +15,7 @@
 
 import functools
 import typing as tp
+import warnings
 
 import equinox as eqx
 import jax
@@ -22,6 +23,7 @@ import jax.core
 from jax.flatten_util import ravel_pytree
 import jax.numpy as jnp
 import jax.random as jr
+import numpy as np
 import optax as ox
 from scipy.optimize import minimize
 
@@ -183,7 +185,14 @@ def fit_scipy(
 
     Returns:
         tuple[Module, Array]: A tuple of the optimised model and an array of
-            objective values recorded at each iteration.
+            objective values recorded at each iteration. The last value of the
+            history is the objective value of the returned model.
+
+    Warns:
+        RuntimeWarning: If the last step of the optimiser goes to a point where
+            the objective is not finite (for example NaN). Then ``fit_scipy``
+            returns the last iterate where the objective is finite. The history
+            stops at that iterate, so it does not contain the non-finite value.
 
     Example:
         >>> import jax
@@ -233,17 +242,38 @@ def fit_scipy(
         return value, scipy_grads
 
     history = [scipy_wrapper(x0)[0]]
+    last_finite = (0, x0) if jnp.isfinite(history[0]) else None
+
+    def record(x):
+        nonlocal last_finite
+        history.append(scipy_wrapper(x)[0])
+        if jnp.isfinite(history[-1]):
+            last_finite = (len(history) - 1, np.array(x))
+
     result = minimize(
         fun=scipy_wrapper,
         x0=x0,
         jac=True,
-        callback=lambda X: history.append(scipy_wrapper(X)[0]),
+        callback=record,
         options={"maxiter": max_iters, "disp": verbose},
     )
+    x = result.x
+
+    # SciPy can accept a last step to a NaN objective. Then return the last
+    # finite iterate, and stop the history at that iterate.
+    if not np.isfinite(result.fun) and last_finite is not None:
+        warnings.warn(
+            "The optimiser stepped to a non-finite objective value. fit_scipy "
+            "returns the last finite iterate.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        index, x = last_finite
+        history = history[: index + 1]
     history = jnp.array(history)
 
     # convert back to pytree with JAX arrays
-    params = scipy_to_jnp(result.x)
+    params = scipy_to_jnp(x)
 
     # Reconstruct model
     model = eqx.combine(params, static)
