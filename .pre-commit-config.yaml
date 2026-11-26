@@ -10,17 +10,30 @@ repos:
         entry: uv run --frozen ruff check
         language: system
         types: [python]
-        files: ^(gpjax|tests|benchmarks)/
+        files: ^(gpjax|tests|benchmarks|skgp)/
       - id: ruff-format
         name: ruff format
         entry: uv run --frozen ruff format
         language: system
         types: [python]
         files: ^(gpjax|tests|benchmarks)/
+      - id: ruff-format-skgp
+        name: ruff format (skgp)
+        entry: uv run --frozen ruff format
+        language: system
+        # skgp's CI also formats the Python in its Markdown files.
+        types_or: [python, markdown]
+        files: ^skgp/
       - id: ty
         name: ty check
         entry: uv run --frozen ty check gpjax
         language: system
         # ty checks the whole package, so it runs when any of these change.
         files: ^(gpjax/|pyproject\.toml$|uv\.lock$)
+        pass_filenames: false
+      - id: ty-skgp
+        name: ty check (skgp)
+        entry: uv run --frozen --package skgp ty check --project skgp
+        language: system
+        files: ^(gpjax/|skgp/src/|skgp/tests/|skgp/pyproject\.toml$|pyproject\.toml$|uv\.lock$)
         pass_filenames: false

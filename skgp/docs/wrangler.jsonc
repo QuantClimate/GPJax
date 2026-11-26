@@ -1,0 +1,19 @@
+// Cloudflare Workers configuration for the docs: the Sphinx HTML build is
+// served as static assets, with no Worker code. The `deploy` job in
+// .github/workflows/docs.yml deploys it on every push to main that changes the
+// docs or the source.
+{
+  "name": "skgp-docs",
+  "compatibility_date": "2026-11-17",
+  // Serve the docs only on the custom domain, not on workers.dev.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Cloudflare creates the DNS record and certificate for this hostname.
+  "routes": [{ "pattern": "skgp.quantclimate.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./_build/html",
+    // Serve every file at exactly the URL Sphinx gives it (/page.html stays
+    // /page.html). docs/_redirects maps / and /dir/ to their index.html.
+    "html_handling": "none"
+  }
+}

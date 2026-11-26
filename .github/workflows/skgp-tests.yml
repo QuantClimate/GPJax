@@ -1,0 +1,147 @@
+name: "skgp tests"
+
+# skgp's checks. They run for changes to skgp and for changes to GPJax, because
+# skgp is built on GPJax and the workspace tests skgp against the GPJax code in
+# the same commit. A draft pull request is not tested: check locally while the
+# work is in progress, then mark it ready.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "skgp/**"
+      - "gpjax/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/skgp-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "skgp/**"
+      - "gpjax/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/skgp-tests.yml"
+
+# Every job grants itself the narrowest scope it needs: a read-only token for
+# checkout. This workflow publishes nothing.
+permissions: {}
+
+# A new push to a pull request, or to main, supersedes the run still going for
+# the same pull request or branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: "skgp: Python ${{ matrix.python-version }} on ${{ matrix.os }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
+        exclude:
+          # macOS runs a subset, as in GPJax's tests.yml.
+          - os: macos-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.15"
+
+    # A push to main has no pull request, so it always runs.
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ${{ matrix.os }}
+    # Python 3.15 is new and GPJax does not yet list it as supported, so a
+    # failure there is reported but does not block the pull request. Remove this
+    # line once 3.15 has run cleanly.
+    continue-on-error: ${{ matrix.python-version == '3.15' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: skgp
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          # The cache is on here, unlike in the release workflow: this workflow
+          # publishes nothing, so a poisoned cache cannot reach a release.
+          enable-cache: true
+
+      - name: Check uv.lock is up to date
+        run: |
+          uv lock --check
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --package skgp
+
+      - name: Check lint and formatting
+        # `--no-fix`: the repository's ruff settings fix problems in place, but CI must only report them.
+        run: |
+          uv run --frozen --package skgp ruff check --no-fix
+          uv run --frozen --package skgp ruff format --check
+
+      - name: Check types
+        run: |
+          uv run --frozen --package skgp ty check
+
+      - name: Run tests
+        run: |
+          uv run --frozen --package skgp pytest -v --tb=short -m ""
+
+  oldest-gpjax:
+    # The workspace always tests skgp against the GPJax code in the same commit.
+    # A user can still install skgp with the oldest GPJax that skgp permits. This
+    # job installs skgp from its own files, without the workspace, with that
+    # GPJax from PyPI. When it fails, raise skgp's minimum GPJax version.
+    name: "skgp: oldest permitted GPJax"
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+    defaults:
+      run:
+        working-directory: skgp
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install skgp with the oldest permitted GPJax
+        # `--no-sources` ignores `[tool.uv.sources]`, so GPJax comes from PyPI
+        # and not from the workspace.
+        run: |
+          OLDEST=$(python -c 'import re, tomllib; deps = tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]; print(next(re.search(r">=([0-9.]+)", d).group(1) for d in deps if re.match(r"gpjax\b", d)))')
+          echo "Oldest permitted GPJax: $OLDEST"
+          uv venv --python 3.12 .venv-oldest
+          uv pip install --python .venv-oldest --no-sources . --group pyproject.toml:dev "gpjax==$OLDEST"
+
+      - name: Run tests
+        run: |
+          .venv-oldest/bin/python -m pytest -v --tb=short -m ""

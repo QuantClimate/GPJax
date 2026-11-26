@@ -11,6 +11,10 @@ GPJax is a Gaussian process library built on JAX. The API mirrors GP mathematics
 ## Project Structure & Module Organization
 Core GP primitives live in `gpjax/`, with modules such as `kernels/`, `mean_functions.py`, `likelihoods.py`, `variational_families.py`, `conditioning.py`, and `linalg/` mirroring the mathematical decomposition of a GP. Two subpackages hold larger model families: `gpjax/state_space/` (state-space GPs and SDE solvers) and `gpjax/models/` (OILMM). Tests that shadow these modules live in `tests/`—keep filenames aligned (for example, `tests/test_likelihoods.py`) so stack traces map to the right file. Example notebooks are `py:percent` scripts in `docs/examples/` and are rendered into the Sphinx site from `docs/` (output goes to `docs/_build/html`). Benchmarks live in `benchmarks/` (ASV). The root `static/` directory holds the JOSS paper and `CONTRIBUTING.md`; documentation assets live in `docs/static/`. Repo automation resides in the root config files.
 
+## skgp
+
+The `skgp/` folder holds skgp, a second package: scikit-learn-style Gaussian process models built on GPJax. skgp and GPJax make a uv workspace with one `uv.lock` (`docs/adr/0003-skgp-as-workspace-member.md`). Each package has its own version, PyPI listing, docs site and release tag (`v1.3.0` for GPJax, `skgp-v0.1.0` for skgp). When you work in `skgp/`, obey `skgp/AGENTS.md`. GPJax's commands below act on GPJax only; `uv sync` at the root does not install skgp.
+
 ## Build, Test, and Development Commands
 Create the dev environment with `uv venv && uv sync`, then install the pre-commit hooks with `uv run prek install`. All commands must be prefixed with `uv run`:
 

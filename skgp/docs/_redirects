@@ -1,0 +1,5 @@
+# Cloudflare static-asset rules, copied to the site root by html_extra_path.
+# html_handling is "none" in docs/wrangler.jsonc, so a directory URL only
+# serves its index.html through these rules.
+/ /index.html 200
+/*/ /:splat/index.html 200

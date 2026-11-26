@@ -108,7 +108,7 @@ jobs:
 
       - name: Run tests
         run: |
-          uv run pytest . -v --tb=short
+          uv run pytest tests -v --tb=short
 
       - name: Run docstring tests
         run: |
@@ -116,7 +116,7 @@ jobs:
 
       - name: Test installation
         run: |
-          uv build
+          uv build --package gpjax
           cd dist
           pip install *.whl
           python -c "import gpjax; print(f'GPJax {gpjax.__version__} installed successfully')"
@@ -192,7 +192,7 @@ jobs:
 
       - name: Build package
         run: |
-          uv build
+          uv build --package gpjax
 
       - name: Verify package
         run: |
@@ -252,7 +252,7 @@ jobs:
             fi
           fi
 
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG^" 2>/dev/null || echo "")
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'v*' "$CURRENT_TAG^" 2>/dev/null || echo "")
           NOTES="$SECTION"
           if [ -n "$PREVIOUS_TAG" ]; then
             NOTES="$NOTES"$'\n\n'"**Full diff:** $REPO_URL/compare/$PREVIOUS_TAG...$CURRENT_TAG"
