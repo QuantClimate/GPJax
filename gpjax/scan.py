@@ -13,13 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-from beartype.typing import (
+from collections.abc import Callable
+from typing import (
     Any,
-    Callable,
-    Optional,
-    Tuple,
     TypeVar,
 )
+
 import jax
 from jax import lax
 import jax.numpy as jnp
@@ -64,15 +63,15 @@ def _callback(cond: ScalarBool, func: Callable, *args: Any) -> None:
 
 
 def vscan(
-    f: Callable[[Carry, X], Tuple[Carry, Y]],
+    f: Callable[[Carry, X], tuple[Carry, Y]],
     init: Carry,
     xs: X,
-    length: Optional[int] = None,
-    reverse: Optional[bool] = False,
-    unroll: Optional[int] = 1,
-    log_rate: Optional[int] = 10,
-    log_value: Optional[bool] = True,
-) -> Tuple[
+    length: int | None = None,
+    reverse: bool | None = False,
+    unroll: int | None = 1,
+    log_rate: int | None = 10,
+    log_value: bool | None = True,
+) -> tuple[
     Carry, Shaped[Array, "..."]
 ]:  # return type should be Tuple[Carry, Y[Array]]...
     r"""Scan with verbose output.
@@ -128,7 +127,7 @@ def vscan(
         """Close the tqdm progress bar."""
         _progress_bar.close()
 
-    def _body_fun(carry: Carry, iter_num_and_x: Tuple[ScalarInt, X]) -> Tuple[Carry, Y]:
+    def _body_fun(carry: Carry, iter_num_and_x: tuple[ScalarInt, X]) -> tuple[Carry, Y]:
         # Unpack iter_num and x.
         iter_num, x = iter_num_and_x
 

@@ -19,9 +19,11 @@ import warnings
 
 import equinox as eqx
 import jax
+import jax.core
 from jax.flatten_util import ravel_pytree
 import jax.numpy as jnp
 import jax.random as jr
+import numpy as np
 import optax as ox
 from scipy.optimize import OptimizeWarning, minimize
 
@@ -105,7 +107,22 @@ def fit(
         safe (bool): Whether to validate inputs before optimisation. Defaults to True.
 
     Returns:
-        A tuple comprising the optimised model and training history.
+        A tuple comprising the optimised model and training history. The value
+        at index ``k`` of the history is the objective before step ``k``. With
+        mini-batches, it is the objective on the mini-batch of step ``k``.
+
+        ``fit`` also evaluates the objective of the model after the last step.
+        If that objective is not finite (for example NaN), ``fit`` returns the
+        last iterate whose objective is finite. All values in the history after
+        that iterate are not finite. If no iterate has a finite objective,
+        ``fit`` returns the model after the last step. With mini-batches, the
+        objective of the model after the last step is evaluated on one more
+        mini-batch.
+
+    Warns:
+        RuntimeWarning: If ``fit`` returns an earlier iterate because the
+            objective after the last step is not finite. Inside ``jax.jit`` or
+            ``jax.vmap``, ``fit`` gives no warning.
     """
     if safe:
         # Check inputs.
@@ -125,32 +142,70 @@ def fit(
     # Initialise optimiser state.
     opt_state = optim.init(eqx.filter(model, eqx.is_array))
 
-    # Mini-batch random keys to scan over.
-    iter_keys = jr.split(key, num_iters)
+    # Mini-batch random keys to scan over. The scan has one more iteration,
+    # which only evaluates the objective of the model after the last step.
+    iter_keys = jnp.concatenate(
+        [jr.split(key, num_iters), jr.fold_in(key, num_iters)[None]]
+    )
 
-    # Optimisation step.
-    def step(carry, key):
-        model, opt_state = carry
-
+    def mini_batch_or_all_data(key: KeyArray) -> Dataset:
         if batch_size != -1:
-            batch = get_batch(train_data, batch_size, key)
-        else:
-            batch = train_data
+            return get_batch(train_data, batch_size, key)
+        return train_data
 
-        loss_val, grads = eqx.filter_value_and_grad(loss)(model, batch)
-        updates, opt_state = optim.update(
-            grads, opt_state, eqx.filter(model, eqx.is_array)
+    # Optimisation step. The carry also holds the parameters of the last
+    # iterate whose objective is finite, and the index of that iterate (-1 if
+    # there is none).
+    def step(carry, key_and_index):
+        model, opt_state, last_finite_params, last_finite_index = carry
+        key, index = key_and_index
+
+        loss_val, grads = eqx.filter_value_and_grad(loss)(
+            model, mini_batch_or_all_data(key)
         )
-        model = eqx.apply_updates(model, updates)
+        params = eqx.filter(model, eqx.is_array)
+        finite = jnp.isfinite(loss_val)
+        last_finite_params = _select(finite, params, last_finite_params)
+        last_finite_index = jnp.where(finite, index, last_finite_index)
 
-        carry = model, opt_state
+        # The last iteration does not change the model.
+        is_step = index < num_iters
+        updates, new_opt_state = optim.update(grads, opt_state, params)
+        opt_state = _select(is_step, new_opt_state, opt_state)
+        model = eqx.combine(
+            _select(
+                is_step,
+                eqx.filter(eqx.apply_updates(model, updates), eqx.is_array),
+                params,
+            ),
+            model,
+        )
+
+        carry = model, opt_state, last_finite_params, last_finite_index
         return carry, loss_val
 
     # Optimisation scan.
     scan = vscan if verbose else jax.lax.scan
 
     # Optimisation loop.
-    (model, _), history = scan(step, (model, opt_state), (iter_keys), unroll=unroll)
+    params, static = eqx.partition(model, eqx.is_array)
+    indices = jnp.arange(num_iters + 1)
+    (model, _, last_finite_params, last_finite_index), losses = scan(
+        step,
+        (model, opt_state, params, jnp.full((), -1, dtype=indices.dtype)),
+        (iter_keys, indices),
+        unroll=unroll,
+    )
+    history = losses[:num_iters]
+
+    # If the objective after the last step is not finite, return the last
+    # iterate whose objective is finite.
+    use_last_finite = (last_finite_index >= 0) & (last_finite_index < num_iters)
+    model = eqx.combine(
+        _select(use_last_finite, last_finite_params, eqx.filter(model, eqx.is_array)),
+        static,
+    )
+    _warn_if_last_finite_iterate_returned(use_last_finite, "fit")
 
     return model, history
 
@@ -183,7 +238,19 @@ def fit_scipy(
 
     Returns:
         tuple[Module, Array]: A tuple of the optimised model and an array of
-            objective values recorded at each iteration.
+            objective values recorded at each iteration. The last value of the
+            history is the objective value of the returned model.
+
+        If the objective after the last step is not finite (for example NaN),
+        ``fit_scipy`` returns the last iterate whose objective is finite. The
+        history then stops at that iterate. If no iterate has a finite
+        objective, ``fit_scipy`` returns the model after the last step.
+
+    Warns:
+        RuntimeWarning: If ``fit_scipy`` returns an earlier iterate because the
+            objective after the last step is not finite.
+        OptimizeWarning: If SciPy reports that L-BFGS-B did not converge, for
+            example because it reached ``max_iters``.
 
     Example:
         >>> import jax
@@ -233,14 +300,31 @@ def fit_scipy(
         return value, scipy_grads
 
     history = [scipy_wrapper(x0)[0]]
+    last_finite = (0, x0) if np.isfinite(history[0]) else None
+
+    def record_objective(x):
+        nonlocal last_finite
+        history.append(scipy_wrapper(x)[0])
+        if np.isfinite(history[-1]):
+            last_finite = (len(history) - 1, np.array(x))
+
     result = minimize(
         fun=scipy_wrapper,
         x0=x0,
         jac=True,
         method="L-BFGS-B",
-        callback=lambda X: history.append(scipy_wrapper(X)[0]),
+        callback=record_objective,
         options={"maxiter": max_iters},
     )
+    x = result.x
+
+    # SciPy can accept a last step to a NaN objective. Then return the last
+    # iterate whose objective is finite, and stop the history at that iterate.
+    use_last_finite = not np.isfinite(result.fun) and last_finite is not None
+    if use_last_finite:
+        index, x = last_finite
+        history = history[: index + 1]
+    _warn_if_last_finite_iterate_returned(use_last_finite, "fit_scipy")
     history = jnp.array(history)
 
     # L-BFGS-B has no verbosity option in SciPy, so report the outcome here
@@ -259,7 +343,7 @@ def fit_scipy(
         )
 
     # convert back to pytree with JAX arrays
-    params = scipy_to_jnp(result.x)
+    params = scipy_to_jnp(x)
 
     # Reconstruct model
     model = eqx.combine(params, static)
@@ -296,6 +380,17 @@ def fit_lbfgs(
     Returns:
         tuple[Module, Array]: A tuple of the optimised model and the final loss
             value.
+
+        If the objective or the parameters after the last step are not finite
+        (for example NaN), ``fit_lbfgs`` returns the last iterate whose
+        objective and parameters are finite, and the objective of that
+        iterate. If no iterate is finite, ``fit_lbfgs`` returns the model after
+        the last step.
+
+    Warns:
+        RuntimeWarning: If ``fit_lbfgs`` returns an earlier iterate because the
+            objective or the parameters after the last step are not finite.
+            Inside ``jax.jit`` or ``jax.vmap``, ``fit_lbfgs`` gives no warning.
 
     Example:
         >>> import jax
@@ -344,12 +439,22 @@ def fit_lbfgs(
     opt_state = optim.init(params)
     loss_value_and_grad = ox.value_and_grad_from_state(loss)
 
-    # Optimisation step.
+    def all_finite(params) -> jax.Array:
+        return jnp.all(
+            jnp.array([jnp.all(jnp.isfinite(p)) for p in jax.tree.leaves(params)])
+        )
+
+    # Optimisation step. The carry also holds the last iterate whose objective
+    # and parameters are finite, and the objective of that iterate.
     def step(carry):
-        params, opt_state = carry
+        params, opt_state, last_finite_params, last_finite_loss = carry
 
         # Using optax's value_and_grad_from_state is more efficient given LBFGS uses a linesearch
         loss_val, loss_gradient = loss_value_and_grad(params, state=opt_state)
+        finite = jnp.isfinite(loss_val) & all_finite(params)
+        last_finite_params = _select(finite, params, last_finite_params)
+        last_finite_loss = jnp.where(finite, loss_val, last_finite_loss)
+
         updates, opt_state = optim.update(
             loss_gradient,
             opt_state,
@@ -360,22 +465,33 @@ def fit_lbfgs(
         )
         params = ox.apply_updates(params, updates)
 
-        return params, opt_state
+        return params, opt_state, last_finite_params, last_finite_loss
 
     def continue_fn(carry):
-        _, opt_state = carry
+        _, opt_state, _, _ = carry
         n = ox.tree_utils.tree_get(opt_state, "count")
         g = ox.tree_utils.tree_get(opt_state, "grad")
         g_l2_norm = ox.tree_utils.tree_l2_norm(g)
         return (n == 0) | ((n < max_iters) & (g_l2_norm >= gtol))
 
-    # Optimisation loop
-    params, opt_state = jax.lax.while_loop(
+    # Optimisation loop. No iterate is finite before the first step.
+    no_loss = jnp.full((), jnp.nan, dtype=jax.eval_shape(loss, params).dtype)
+    params, opt_state, last_finite_params, last_finite_loss = jax.lax.while_loop(
         continue_fn,
         step,
-        (params, opt_state),
+        (params, opt_state, params, no_loss),
     )
     final_loss = ox.tree_utils.tree_get(opt_state, "value")
+
+    # The line search rejects a step to a non-finite objective, but a NaN
+    # gradient can still make the parameters NaN. Then return the last iterate
+    # whose objective and parameters are finite, and its objective.
+    use_last_finite = ~(jnp.isfinite(final_loss) & all_finite(params)) & jnp.isfinite(
+        last_finite_loss
+    )
+    params = _select(use_last_finite, last_finite_params, params)
+    final_loss = jnp.where(use_last_finite, last_finite_loss, final_loss)
+    _warn_if_last_finite_iterate_returned(use_last_finite, "fit_lbfgs")
 
     # Reconstruct model
     model = eqx.combine(params, static)
@@ -544,6 +660,15 @@ def fit_natgrads(
         # itself repeats the check unconditionally as a backstop.
         _reject_frozen_coordinates(model)
 
+    # The natural-gradient steps assume one latent function: one mean column
+    # and one root matrix.
+    num_latent_functions = model.model.likelihood.num_latent_functions
+    if num_latent_functions > 1:
+        raise ValueError(
+            "fit_natgrads supports one latent function only, but the likelihood "
+            f"has {num_latent_functions}. Use fit with the elbo objective instead."
+        )
+
     model = _prepare_model(model, train_data)
 
     # Split once, before the scan: the exponential-family coordinates are driven by
@@ -646,6 +771,32 @@ def get_batch(train_data: Dataset, batch_size: int, key: KeyArray) -> Dataset:
     # expected log-likelihood. `full_size` already falls back to `n` when the parent
     # is itself a full dataset, and re-batching a batch keeps the original size.
     return Dataset(X=x[indices], y=y[indices], n_total=train_data.full_size)
+
+
+def _select(condition: jax.Array, if_true: tp.Any, if_false: tp.Any) -> tp.Any:
+    """Select ``if_true`` where ``condition`` is true, else ``if_false``, leaf by leaf."""
+    return jax.tree.map(lambda a, b: jnp.where(condition, a, b), if_true, if_false)
+
+
+def _warn_if_last_finite_iterate_returned(
+    returned: jax.Array | bool, optimiser: str
+) -> None:
+    """Warn that ``optimiser`` returns the last iterate whose objective is finite.
+
+    Inside ``jax.jit`` or ``jax.vmap``, ``returned`` is not known, and there is no
+    warning.
+    """
+    try:
+        returned = bool(returned)
+    except jax.errors.ConcretizationTypeError:
+        return
+    if returned:
+        warnings.warn(
+            f"The objective after the last step of {optimiser} is not finite. "
+            f"{optimiser} returns the last iterate whose objective is finite.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
 
 
 def _prepare_model(model: Model, train_data: Dataset) -> Model:

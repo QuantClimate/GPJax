@@ -81,7 +81,7 @@ def test_init(kernel_request):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("variance", VARIANCES)
 def test_init_override_paramtype(kernel_request):
@@ -125,7 +125,7 @@ def test_init_variances(kernel: type[AbstractKernel], variance):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("variance", VARIANCES)
 @pytest.mark.parametrize("n", [1, 2, 5], ids=lambda x: f"n={x}")
@@ -145,7 +145,7 @@ def test_gram(test_init: AbstractKernel, n: int):
 
 
 @pytest.mark.parametrize(
-    "kernel, params", [(cls, p) for cls, params in TESTED_KERNELS for p in params]
+    ("kernel", "params"), [(cls, p) for cls, params in TESTED_KERNELS for p in params]
 )
 @pytest.mark.parametrize("variance", VARIANCES)
 @pytest.mark.parametrize("n_a", [1, 2, 5], ids=lambda x: f"n_a={x}")

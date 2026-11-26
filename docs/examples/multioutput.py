@@ -192,7 +192,7 @@ print(f"Optimised negative MLL: {-gpx.objectives.conjugate_mll(opt_posterior, D)
 #
 # The multi-output posterior returns predictions as a single Gaussian distribution
 # over a flattened vector of length $MP$, where $M$ is the number of test points and
-# $P$ is the number of outputs. The ordering is output-major: all $M$ values for
+# $P$ is the number of outputs. The ordering is blocked: all $M$ values for
 # output 1 appear first, followed by all $M$ values for output 2, and so on. We
 # reshape the mean and extract per-output marginal variances from the diagonal of
 # the joint covariance.
@@ -484,7 +484,7 @@ print(
 #
 # The multi-output posterior returns predictions as a single Gaussian distribution
 # over a flattened vector of length $MP$, where $M$ is the number of test points.
-# The ordering is output-major: all $M$ values for output 1 appear first, then
+# The ordering is blocked: all $M$ values for output 1 appear first, then
 # output 2, then output 3. We reshape accordingly.
 
 # %%

@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
+import typing as tp
 from typing import ClassVar
 
-import beartype.typing as tp
 import jax.numpy as jnp
 from jaxtyping import Float
 from paramax import AbstractUnwrappable
@@ -33,8 +33,8 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-Lengthscale = tp.Union[Float[Array, "D"], ScalarArray]
-LengthscaleCompatible = tp.Union[ScalarFloat, list[float], Lengthscale]
+Lengthscale = Float[Array, " D"] | ScalarArray
+LengthscaleCompatible = ScalarFloat | list[float] | Lengthscale
 
 
 class Periodic(StationaryKernel):
@@ -53,11 +53,11 @@ class Periodic(StationaryKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
-        lengthscale: tp.Union[LengthscaleCompatible, AbstractUnwrappable] = 1.0,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        period: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        active_dims: list[int] | slice | None = None,
+        lengthscale: LengthscaleCompatible | AbstractUnwrappable = 1.0,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        period: ScalarFloat | AbstractUnwrappable = 1.0,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initializes the kernel.

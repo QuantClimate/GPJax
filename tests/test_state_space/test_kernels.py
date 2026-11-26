@@ -116,7 +116,7 @@ def test_to_sde_sum_kernel_returns_sumsde():
 
 
 @pytest.mark.parametrize(
-    "kernel_factory,error_match",
+    ("kernel_factory", "error_match"),
     [
         (
             lambda: gpx.kernels.Periodic(lengthscale=1.0, variance=1.0),
@@ -147,7 +147,7 @@ def test_to_sde_rejects_product_kernel_with_kronecker_blowup_message():
 
 
 @pytest.mark.parametrize(
-    "kernel_factory,error_match",
+    ("kernel_factory", "error_match"),
     [
         (
             # Three-factor product: genuinely unsupported even though a
@@ -187,7 +187,7 @@ def test_to_sde_rejects_genuinely_unsupported_product_kernels(
 
 
 @pytest.mark.parametrize(
-    "matern_cls,matern_sde_cls,matern_state_dim",
+    ("matern_cls", "matern_sde_cls", "matern_state_dim"),
     [
         (gpx.kernels.Matern12, Matern12SDE, 1),
         (gpx.kernels.Matern32, Matern32SDE, 2),

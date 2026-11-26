@@ -1,0 +1,349 @@
+name: "skgp release"
+
+# Releases skgp. A tag such as `skgp-v0.1.0` starts it. GPJax's own release
+# workflow (release.yml) starts on tags such as `v1.3.0`, so neither starts the
+# other.
+
+on:
+  push:
+    tags:
+      - "skgp-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., skgp-v0.1.0)"
+        required: true
+        type: string
+      draft:
+        description: "Create draft release"
+        required: false
+        default: false
+        type: boolean
+
+# Every job below grants itself the narrowest scope it needs. Only
+# `create-release` writes contents, and only `publish-pypi` gets an OIDC token,
+# so the test, scan and build jobs — the ones that execute repository code —
+# run with a read-only token.
+permissions: {}
+
+jobs:
+  validate-release:
+    name: "Release Validation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Extract version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Validate version format
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [[ ! $VERSION =~ ^skgp-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            echo "Expected format: skgp-v1.2.3 or skgp-v1.2.3-alpha1"
+            exit 1
+          fi
+
+  multi-platform-tests:
+    name: "Multi-Platform Testing"
+    needs: validate-release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
+        exclude:
+          - os: macos-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.15"
+
+    runs-on: ${{ matrix.os }}
+    # Python 3.15 is new and GPJax does not yet list it as supported, so a
+    # failure there is reported but does not block the release. Remove this line
+    # once 3.15 has run cleanly.
+    continue-on-error: ${{ matrix.python-version == '3.15' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          # No cache on a release run: a tag push is a publishing event, so
+          # anything it writes to the shared cache would be restored by later
+          # branch builds. The release path runs once, so the saving is noise.
+          enable-cache: false
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --package skgp
+
+      - name: Run tests
+        working-directory: skgp
+        run: |
+          uv run --frozen --package skgp pytest -v --tb=short -m ""
+
+      - name: Test installation
+        run: |
+          uv build --package skgp
+          cd dist
+          pip install *.whl
+          python -c "from importlib.metadata import version; print(f'skgp {version(\"skgp\")} installed successfully')"
+
+  security-scan:
+    name: "Pre-Release Security Scan"
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false # see the note in multi-platform-tests
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen --package skgp
+          uv add --package skgp safety bandit[toml]
+
+      - name: Run security scans
+        run: |
+          # Check for known vulnerabilities
+          uv run --package skgp safety check --json --output safety-report.json || echo "Safety check completed with warnings"
+
+          # Static security analysis
+          uv run --package skgp bandit -r skgp/src/skgp/ -f json -o bandit-report.json || echo "Bandit scan completed with warnings"
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: security-reports
+          path: |
+            safety-report.json
+            bandit-report.json
+
+  build-package:
+    name: "Build Distribution Package"
+    needs: [validate-release, multi-platform-tests, security-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false # see the note in multi-platform-tests
+
+      - name: Build package
+        run: |
+          uv build --package skgp
+
+      - name: Verify package
+        run: |
+          uv add --package skgp twine
+          uv run --package skgp twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: dist-packages
+          path: dist/
+          retention-days: 90
+
+  generate-changelog:
+    name: "Extract Release Notes"
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # checkout
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The release notes are the hand-written CHANGELOG.md section for this
+      # version, not a list of commit subjects: release branches land on main
+      # as one squashed commit, so commit history cannot describe a release.
+      - name: Extract this version's CHANGELOG section
+        id: changelog
+        env:
+          CURRENT_TAG: ${{ needs.validate-release.outputs.version }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          VERSION="${CURRENT_TAG#skgp-v}"
+
+          # Everything between "## [<version>]" and the next "## [" heading.
+          # index() matches the heading literally, so the dots in the version
+          # are not regex wildcards.
+          SECTION=$(awk -v heading="## [$VERSION]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' skgp/CHANGELOG.md)
+
+          if [ -z "$(printf '%s' "$SECTION" | tr -d '[:space:]')" ]; then
+            if [[ "$VERSION" == *-* ]]; then
+              SECTION="Pre-release of the changes listed under [Unreleased] in skgp/CHANGELOG.md."
+            else
+              echo "::error file=skgp/CHANGELOG.md::No '## [$VERSION]' section found. Add release notes to skgp/CHANGELOG.md before tagging $CURRENT_TAG."
+              exit 1
+            fi
+          fi
+
+          # Only skgp's tags: GPJax's `v*` tags are in the same history.
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 --match 'skgp-v*' "$CURRENT_TAG^" 2>/dev/null || echo "")
+          NOTES="$SECTION"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            NOTES="$NOTES"$'\n\n'"**Full diff:** $REPO_URL/compare/$PREVIOUS_TAG...$CURRENT_TAG"
+          fi
+
+          EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "changelog<<$EOF_MARKER"
+            printf '%s\n' "$NOTES"
+            echo "$EOF_MARKER"
+          } >> "$GITHUB_OUTPUT"
+
+  create-release:
+    name: "Create GitHub Release"
+    needs: [validate-release, build-package, generate-changelog]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release
+      actions: read # download the build artifacts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: dist-packages
+          path: dist/
+
+      - name: Create GitHub Release
+        # `gh` ships on the runner, so the release is cut with the same token
+        # and no third-party action in the publishing path.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.validate-release.outputs.version }}
+          CHANGELOG: ${{ needs.generate-changelog.outputs.changelog }}
+          DRAFT: ${{ github.event.inputs.draft == 'true' }}
+        run: |
+          printf '%s\n' "$CHANGELOG" > release-notes.md
+          # GPJax's latest release stays the repository's "Latest" release.
+          args=(
+            --title "skgp ${VERSION#skgp-v}"
+            --notes-file release-notes.md
+            --target "$GITHUB_SHA"
+            --latest=false
+          )
+          # Every tag contains the `-` of `skgp-v`, so look for a pre-release
+          # suffix such as `-alpha1` only after that prefix.
+          PRERELEASE=false
+          if [[ "${VERSION#skgp-v}" == *-* ]]; then
+            PRERELEASE=true
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            args+=(--draft)
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$VERSION" "${args[@]}" dist/*.tar.gz dist/*.whl
+
+  publish-pypi:
+    name: "Publish to PyPI"
+    needs: [validate-release, create-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write # PyPI trusted publishing
+      actions: read # download the build artifacts
+    # Only publish on actual tag push, not workflow_dispatch
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/skgp-v')
+    environment:
+      name: production
+      url: https://pypi.org/project/skgp/
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: dist-packages
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          print-hash: true

@@ -163,7 +163,7 @@ class TestBasisFunctionComputation:
 class TestEigenKernelComputation:
     """Tests for the EigenKernelComputation engine (used by graph kernels)."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def graph_kernel(self):
         """Create a simple GraphKernel for testing."""
         n_vertices = 10

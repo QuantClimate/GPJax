@@ -15,8 +15,8 @@
 
 import abc
 from dataclasses import dataclass
+import typing as tp
 
-import beartype.typing as tp
 import equinox as eqx
 import jax.numpy as jnp
 import jax.scipy as jsp
@@ -189,15 +189,23 @@ class AbstractVariationalGaussian(AbstractVariationalFamily[L]):
 
     inducing_inputs: tp.Any
 
+    # Whether the family holds one set of variational moments for each latent
+    # function of the likelihood (for example, one for each class of a
+    # `Categorical` likelihood). Only `WhitenedVariationalGaussian` does.
+    _supports_multiple_latent_functions: tp.ClassVar[bool] = False
+
     def __init__(
         self,
         model: JointModel,
-        inducing_inputs: tp.Union[
-            Int[Array, "N D"],
-            Float[Array, "N D"],
-            Real,
-        ],
+        inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"] | Real,
     ):
+        num_latent_functions = model.likelihood.num_latent_functions
+        if num_latent_functions > 1 and not self._supports_multiple_latent_functions:
+            raise ValueError(
+                f"{type(self).__name__} supports one latent function only, but "
+                f"the likelihood has {num_latent_functions}. Use "
+                "WhitenedVariationalGaussian."
+            )
         if not isinstance(inducing_inputs, Real):
             inducing_inputs = Real(inducing_inputs)
 
@@ -245,17 +253,45 @@ class VariationalGaussian(AbstractVariationalGaussian[L]):
     def __init__(
         self,
         model: JointModel,
-        inducing_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]],
-        variational_mean: tp.Union[Float[Array, "N 1"], None] = None,
-        variational_root_covariance: tp.Union[Float[Array, "N N"], None] = None,
+        inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"],
+        variational_mean: Float[Array, "N L"] | None = None,
+        variational_root_covariance: Float[Array, "... N N"] | None = None,
     ):
         super().__init__(model, inducing_inputs)
 
+        num_latent_functions = model.likelihood.num_latent_functions
         if variational_mean is None:
-            variational_mean = jnp.zeros((self.num_inducing, 1))
+            variational_mean = jnp.zeros((self.num_inducing, num_latent_functions))
 
         if variational_root_covariance is None:
             variational_root_covariance = jnp.eye(self.num_inducing)
+            if num_latent_functions > 1:
+                variational_root_covariance = jnp.broadcast_to(
+                    variational_root_covariance,
+                    (num_latent_functions, self.num_inducing, self.num_inducing),
+                )
+
+        # One mean column and one (M, M) root for each latent function; the
+        # root has no leading axis when there is one latent function.
+        num_inducing = self.num_inducing
+        expected_mean_shape = (num_inducing, num_latent_functions)
+        expected_root_shape = (num_inducing, num_inducing)
+        if num_latent_functions > 1:
+            expected_root_shape = (num_latent_functions, *expected_root_shape)
+        mean_shape = jnp.shape(val(variational_mean))
+        root_shape = jnp.shape(val(variational_root_covariance))
+        if mean_shape != expected_mean_shape:
+            raise ValueError(
+                f"variational_mean has shape {mean_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_mean_shape}."
+            )
+        if root_shape != expected_root_shape:
+            raise ValueError(
+                f"variational_root_covariance has shape {root_shape}, but the "
+                f"{num_inducing} inducing inputs and {num_latent_functions} "
+                f"latent functions need shape {expected_root_shape}."
+            )
 
         self.variational_mean = Real(variational_mean)
         self.variational_root_covariance = LowerTriangular(variational_root_covariance)
@@ -334,7 +370,7 @@ class VariationalGaussian(AbstractVariationalGaussian[L]):
             mahalanobis - num_inducing + log_det_prior - log_det_variational + trace
         )
 
-    def condition(self, train_data: tp.Optional[Dataset]) -> SparsePosterior:
+    def condition(self, train_data: Dataset | None) -> SparsePosterior:
         r"""Condition the family, yielding its posterior process.
 
         The family already carries everything conditioning needs — the joint
@@ -362,8 +398,8 @@ class VariationalGaussian(AbstractVariationalGaussian[L]):
 
     def predict(
         self,
-        test_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]],
-        train_data: tp.Optional[Dataset] = None,
+        test_inputs: Int[Array, "N D"] | Float[Array, "N D"],
+        train_data: Dataset | None = None,
     ) -> GaussianDistribution:
         r"""Compute the predictive distribution of the GP at the test inputs t.
 
@@ -405,8 +441,8 @@ class GraphVariationalGaussian(VariationalGaussian[L]):
         self,
         model: JointModel,
         inducing_inputs: Int[Array, "N D"],
-        variational_mean: tp.Union[Float[Array, "N 1"], None] = None,
-        variational_root_covariance: tp.Union[Float[Array, "N N"], None] = None,
+        variational_mean: Float[Array, "N 1"] | None = None,
+        variational_root_covariance: Float[Array, "N N"] | None = None,
     ):
         super().__init__(
             model,
@@ -442,7 +478,14 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
     are the function values at the inducing inputs $z$ and the distribution over
     the inducing inputs is $q(u) = \mathcal{N}(Lz \mu + mz, Lz S Lz^{\top})$. We parameterise this
     over $\mu$ and $sqrt$ with $S = sqrt sqrt^{\top}$.
+
+    It is the only family that supports a likelihood with more than one latent
+    function, such as ``Categorical``. With $L$ latent functions the mean has
+    shape $(m, L)$ and the root has shape $(L, m, m)$: each latent function has
+    its own independent $q$, and all share the inducing inputs.
     """
+
+    _supports_multiple_latent_functions: tp.ClassVar[bool] = True
 
     def prior_kl(self) -> ScalarFloat:
         r"""Compute the KL-divergence between our variational approximation and
@@ -473,6 +516,12 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
 
         where $m$ is the number of inducing points.
 
+        With $L$ latent functions (for example, one for each class of a
+        ``Categorical`` likelihood), the mean has one column and the root one
+        $m \times m$ matrix for each latent function. The latent functions
+        are independent under $q$ and under the prior, so the divergence is
+        the sum of $L$ terms of the form above.
+
         Returns:
             ScalarFloat: The KL-divergence between our variational
                 approximation and the GP prior.
@@ -481,16 +530,19 @@ class WhitenedVariationalGaussian(VariationalGaussian[L]):
         mu = val(self.variational_mean)
         sqrt = val(self.variational_root_covariance)
 
-        # mu^T I^{-1} mu, tr[S] = ||sqrt||_F^2 and log|S| = 2 sum log|sqrt_ii|.
-        # The absolute value keeps the log-determinant valid for any square root,
-        # though `LowerTriangular` already guarantees a positive diagonal.
+        # mu^T I^{-1} mu, tr[S] = ||sqrt||_F^2 and log|S| = 2 sum log|sqrt_ii|,
+        # each summed over the latent functions. The absolute value keeps the
+        # log-determinant valid for any square root, though `LowerTriangular`
+        # already guarantees a positive diagonal.
         mahalanobis = jnp.sum(jnp.square(mu))
         trace = jnp.sum(jnp.square(sqrt))
-        log_det_variational = 2.0 * jnp.sum(jnp.log(jnp.abs(jnp.diag(sqrt))))
+        diagonal = jnp.diagonal(sqrt, axis1=-2, axis2=-1)
+        log_det_variational = 2.0 * jnp.sum(jnp.log(jnp.abs(diagonal)))
 
-        return 0.5 * (mahalanobis + trace - self.num_inducing - log_det_variational)
+        # mu has m * L entries: the dimension of the whole Gaussian.
+        return 0.5 * (mahalanobis + trace - mu.size - log_det_variational)
 
-    def condition(self, train_data: tp.Optional[Dataset]) -> SparsePosterior:
+    def condition(self, train_data: Dataset | None) -> SparsePosterior:
         r"""Condition the family, yielding its posterior process.
 
         Identical to :meth:`VariationalGaussian.condition` — ``train_data`` is
@@ -577,9 +629,9 @@ class DualVariationalGaussian(AbstractVariationalGaussian[L]):
     def __init__(
         self,
         model: JointModel,
-        inducing_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]],
-        dual_vector: tp.Union[Float[Array, "N 1"], None] = None,
-        dual_matrix: tp.Union[Float[Array, "N N"], None] = None,
+        inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"],
+        dual_vector: Float[Array, "N 1"] | None = None,
+        dual_matrix: Float[Array, "N N"] | None = None,
     ):
         super().__init__(model, inducing_inputs)
 
@@ -798,7 +850,7 @@ class DualVariationalGaussian(AbstractVariationalGaussian[L]):
         )
         return 0.5 * (trace - self.num_inducing + mahalanobis + log_det_ratio)
 
-    def condition(self, train_data: tp.Optional[Dataset]) -> SparsePosterior:
+    def condition(self, train_data: Dataset | None) -> SparsePosterior:
         r"""Condition the family, yielding its posterior process.
 
         The stored sites already summarise the data, so ``train_data`` is
@@ -828,8 +880,8 @@ class DualVariationalGaussian(AbstractVariationalGaussian[L]):
 
     def predict(
         self,
-        test_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]],
-        train_data: tp.Optional[Dataset] = None,
+        test_inputs: Int[Array, "N D"] | Float[Array, "N D"],
+        train_data: Dataset | None = None,
     ) -> GaussianDistribution:
         r"""Compute the predictive distribution of the GP at the test inputs t.
 
@@ -943,9 +995,9 @@ class CollapsedVariationalGaussian(AbstractVariationalGaussian[GL]):
 class VariationalGaussianInit:
     """Initialization parameters for a variational Gaussian distribution."""
 
-    inducing_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]]
-    variational_mean: tp.Union[Float[Array, "N 1"], None] = None
-    variational_root_covariance: tp.Union[Float[Array, "N N"], None] = None
+    inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"]
+    variational_mean: Float[Array, "N 1"] | None = None
+    variational_root_covariance: Float[Array, "N N"] | None = None
 
 
 class HeteroscedasticPrediction(tp.NamedTuple):
@@ -966,16 +1018,14 @@ class HeteroscedasticVariationalFamily(AbstractVariationalFamily[HL]):
     def __init__(
         self,
         model: HP,
-        inducing_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]] = None,
-        inducing_inputs_g: tp.Union[
-            Int[Array, "M D"], Float[Array, "M D"], None
-        ] = None,
-        variational_mean_f: tp.Union[Float[Array, "N 1"], None] = None,
-        variational_root_covariance_f: tp.Union[Float[Array, "N N"], None] = None,
-        variational_mean_g: tp.Union[Float[Array, "M 1"], None] = None,
-        variational_root_covariance_g: tp.Union[Float[Array, "M M"], None] = None,
-        signal_init: tp.Optional[VariationalGaussianInit] = None,
-        noise_init: tp.Optional[VariationalGaussianInit] = None,
+        inducing_inputs: Int[Array, "N D"] | Float[Array, "N D"] = None,
+        inducing_inputs_g: Int[Array, "M D"] | Float[Array, "M D"] | None = None,
+        variational_mean_f: Float[Array, "N 1"] | None = None,
+        variational_root_covariance_f: Float[Array, "N N"] | None = None,
+        variational_mean_g: Float[Array, "M 1"] | None = None,
+        variational_root_covariance_g: Float[Array, "M M"] | None = None,
+        signal_init: VariationalGaussianInit | None = None,
+        noise_init: VariationalGaussianInit | None = None,
     ):
         if signal_init is not None:
             self.signal_variational = VariationalGaussian(
@@ -1024,7 +1074,7 @@ class HeteroscedasticVariationalFamily(AbstractVariationalFamily[HL]):
     def prior_kl(self) -> ScalarFloat:
         return self.signal_variational.prior_kl() + self.noise_variational.prior_kl()
 
-    def condition(self, train_data: tp.Optional[Dataset]) -> Posterior:
+    def condition(self, train_data: Dataset | None) -> Posterior:
         r"""Not available: the heteroscedastic family has no single posterior.
 
         This family approximates *two* latent processes -- signal and noise --
@@ -1051,7 +1101,7 @@ class HeteroscedasticVariationalFamily(AbstractVariationalFamily[HL]):
         )
 
     def predict(
-        self, test_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]]
+        self, test_inputs: Int[Array, "N D"] | Float[Array, "N D"]
     ) -> HeteroscedasticPrediction:
         dist_f = self.signal_variational.predict(test_inputs)
         dist_g = self.noise_variational.predict(test_inputs)
@@ -1073,7 +1123,7 @@ class HeteroscedasticVariationalFamily(AbstractVariationalFamily[HL]):
         )
 
     def predict_latents(
-        self, test_inputs: tp.Union[Int[Array, "N D"], Float[Array, "N D"]]
+        self, test_inputs: Int[Array, "N D"] | Float[Array, "N D"]
     ) -> tuple[GaussianDistribution, GaussianDistribution]:
         return (
             self.signal_variational.predict(test_inputs),

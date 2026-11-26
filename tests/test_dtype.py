@@ -19,20 +19,30 @@ float64.  The global ``jax_enable_x64`` flag is toggled per-test via the
 """
 
 from gpjax.dataset import Dataset
-from gpjax.distributions import GeneralisedExtremeValue
+from gpjax.distributions import GaussianDistribution, GeneralisedExtremeValue
 from gpjax.gps import Prior
 from gpjax.kernels.stationary import RBF, Matern32
 from gpjax.likelihoods import (
     GEV,
+    Categorical,
     Gaussian,
     HeteroscedasticGEV,
 )
 from gpjax.mean_functions import Constant
-from gpjax.objectives import conjugate_mll
+from gpjax.objectives import (
+    conjugate_mll,
+    elbo,
+)
 from jax import config
 import jax.numpy as jnp
 import jax.random as jr
+import lineax as lx
 import pytest
+
+from tests._categorical_helpers import (
+    three_class_data,
+    whitened_family,
+)
 
 config.update("jax_enable_x64", True)
 
@@ -182,3 +192,40 @@ def test_gev_likelihood_dtype(enable_x64):
     )
     assert one_latent.dtype == dtype
     assert two_latents.dtype == dtype
+
+
+# --------------------------------------------------------------------------- #
+#  Categorical (multi-class) dtype tests                                       #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+def test_categorical_expected_log_likelihood_dtype(enable_x64):
+    dtype = enable_x64
+    labels = jnp.array([[0.0], [1.0], [2.0], [1.0]], dtype=dtype)
+    mean = jnp.zeros((4, 3), dtype=dtype)
+    variance = jnp.ones((4, 3), dtype=dtype)
+    output = Categorical(num_classes=3).expected_log_likelihood(
+        labels, mean, variance, key=jr.key(0)
+    )
+    assert output.dtype == dtype
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+def test_categorical_predict_dtype(enable_x64):
+    dtype = enable_x64
+    latent = GaussianDistribution(
+        loc=jnp.zeros(6, dtype=dtype),
+        scale=lx.DiagonalLinearOperator(jnp.ones(6, dtype=dtype)),
+    )
+    assert Categorical(num_classes=3).predict(latent).probs.dtype == dtype
+
+
+@pytest.mark.filterwarnings("ignore:Explicitly requested dtype float64:UserWarning")
+@pytest.mark.filterwarnings("ignore:X is not of type float64:UserWarning")
+@pytest.mark.filterwarnings("ignore:y is not of type float64:UserWarning")
+def test_categorical_elbo_dtype(enable_x64):
+    dtype = enable_x64
+    family, *_ = whitened_family(dtype=dtype)
+    output = elbo(family, three_class_data(dtype=dtype), key=jr.key(0))
+    assert output.dtype == dtype

@@ -8,6 +8,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **GPJax builds with `uv_build`.** `pyproject.toml` holds the version, and
+  `gpjax.__version__` reads it from the metadata of the installed package.
+  Thus `import gpjax` needs an installed GPJax; a source folder on `sys.path`
+  alone is not sufficient.
+
+### Fixed
+
+- **`fit`, `fit_scipy` and `fit_lbfgs` no longer return a model with a NaN
+  objective** ([#850](https://github.com/QuantClimate/GPJax/issues/850)). An
+  optimiser can make a last step to a point where the objective is not finite.
+  SciPy's BFGS can accept such a step. Also, a NaN gradient makes the
+  parameters NaN. Before, the three optimisers returned the model at that
+  point, without a message. Now they return the last iterate whose objective
+  is finite, and give a `RuntimeWarning`. If no iterate has a finite
+  objective, they return the model after the last step, as before.
+  - `fit` keeps the full history. All values after the returned iterate are
+    not finite. `fit` also works inside `jax.jit` and `jax.vmap`, where it
+    gives no warning.
+  - The history of `fit_scipy` stops at the returned iterate.
+  - The final loss of `fit_lbfgs` is the objective of the returned iterate.
+
+## [1.3.0] — 2026-11-25
+
+### Added
+
+- **Multi-class classification.** `likelihoods.Categorical(num_classes=C)` gives
+  p(y = c | f) = softmax(f)_c, with one latent GP for each class; all classes
+  share one kernel and one mean function. Labels are float class indices of
+  shape `(N, 1)`. `WhitenedVariationalGaussian` holds one variational mean and
+  root for each class, and `NonConjugateModel` holds an `(N, C)` latent. The
+  latent predictive is flattened in blocked order (index c·N + n), and
+  `Categorical.predict` gives class probabilities from the moment-scaled
+  softmax. The new `integrators.MonteCarloIntegrator` computes the expected
+  log likelihood; it needs a random key, which you give as
+  `elbo(q, data, key=key)` (see ADR-0002). `lx.diagonal` now works on
+  `BlockDiag`.
+
+### Fixed
+
+- **The OILMM predictive is in blocked order.** `OILMMPosterior` returns its
+  mean, dense covariance and marginal variances with index p·N + n. Thus the
+  test inputs of output 0 come first. `ICMKernel`, `LCMKernel` and
+  `Categorical` use the same order. Before, the index was n·P + p, although
+  the docstring said "output-major". The shape does not change: replace
+  `pred.mean.reshape(N, P)` with `pred.mean.reshape(P, N).T` (see
+  `docs/migration.md`).
+
+## [1.2.0] — 2026-11-25
+
+### Changed
+
+- **GPJax supports Python 3.12 to 3.14.** GPJax does not support Python 3.11.
+  CI tests Python 3.12, 3.13 and 3.14.
+- **beartype is no longer a runtime dependency.** Installing GPJax does not
+  install beartype. The library imports its typing names from `typing` and
+  `collections.abc`. The test suite and the example notebooks still check array
+  shapes at runtime with the jaxtyping import hook and beartype, which are now
+  dev and `docs` dependencies. A new CI job checks types statically with ty
+  (`uv run poe typecheck`).
+
 ### Added
 
 - **GEV likelihoods and return levels for extremes.** `likelihoods.GEV` puts a
@@ -542,6 +604,7 @@ instructions.
 - Added: `equinox>=0.11`, `paramax>=0.0.5`, `lineax`.
 - Removed: `flax`, `cola-ml`.
 
+[1.2.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.2.0
 [1.1.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.1.0
 [1.0.0]: https://github.com/QuantClimate/GPJax/releases/tag/v1.0.0
 [0.18.0]: https://github.com/QuantClimate/GPJax/releases/tag/v0.18.0

@@ -28,11 +28,13 @@ def test_bench_check_wired_into_all_tests() -> None:
     It was left out of the sequence pending a soak period for `benchmarks/`
     and `asv-constraints.txt` to land on `main`; that precondition is now
     satisfied, so `bench-check` belongs between `docstrings` and `test`.
+    The static type check (`typecheck`) runs right after `lint`.
     """
     tasks = _poe_tasks()
 
     assert tasks["all-tests"]["sequence"] == [
         "lint",
+        "typecheck",
         "docstrings",
         "bench-check",
         "test",
@@ -43,3 +45,9 @@ def test_bench_check_task_defined() -> None:
     tasks = _poe_tasks()
 
     assert tasks["bench-check"]["cmd"] == "asv check"
+
+
+def test_typecheck_task_defined() -> None:
+    tasks = _poe_tasks()
+
+    assert tasks["typecheck"]["cmd"] == "ty check gpjax"

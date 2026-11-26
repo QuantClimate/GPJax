@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
-import beartype.typing as tp
+import typing as tp
+
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Float
@@ -50,11 +51,11 @@ class Polynomial(AbstractKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
+        active_dims: list[int] | slice | None = None,
         degree: int = 2,
-        shift: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        shift: ScalarFloat | AbstractUnwrappable = 1.0,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initializes the kernel.

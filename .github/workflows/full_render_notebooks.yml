@@ -30,7 +30,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       # The three cache steps below carry `zizmor: ignore[cache-poisoning]`.
       # zizmor flags them because `release: published` makes this a publishing

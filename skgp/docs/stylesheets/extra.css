@@ -1,0 +1,79 @@
+/* Re-tone the theme's Radix "crimson" accent to the ledger's oxblood
+   (#7a2e2a light, #cf6f60 dark), the same scale as
+   ../GPJax/docs/stylesheets/extra.css and ../Impulso/docs/stylesheets/extra.css. shibuya
+   maps every --accent-* token from --crimson-* (conf.py accent_color), so
+   overriding the scale recolors links, active nav, hovers, and focus rings
+   in one place. Selectors mirror the theme's own; both blocks are needed
+   because this file loads after the theme, where a lone :root block would
+   also override the theme's .dark values. Steps follow Radix semantics:
+   1-2 backgrounds, 3-5 washes, 6-8 borders, 9-10 solid, 11-12 text. */
+:root,
+.light,
+.light-theme {
+    --crimson-1: #fdf9f8;
+    --crimson-2: #fbf1ef;
+    --crimson-3: #f4e7e4;
+    --crimson-4: #eedad5;
+    --crimson-5: #e7cbc5;
+    --crimson-6: #ddb8b0;
+    --crimson-7: #cf9d93;
+    --crimson-8: #bd7d71;
+    --crimson-9: #7a2e2a;
+    --crimson-10: #5f231f;
+    --crimson-11: #7a2e2a;
+    --crimson-12: #43201d;
+    --crimson-a1: rgba(122, 46, 42, 0.03);
+    --crimson-a2: rgba(122, 46, 42, 0.05);
+    --crimson-a3: rgba(122, 46, 42, 0.1);
+    --crimson-a4: rgba(122, 46, 42, 0.15);
+    --crimson-a5: rgba(122, 46, 42, 0.21);
+    --crimson-a6: rgba(122, 46, 42, 0.28);
+    --crimson-a7: rgba(122, 46, 42, 0.38);
+    --crimson-a8: rgba(122, 46, 42, 0.52);
+    --crimson-a9: rgba(97, 6, 1, 0.84);
+    --crimson-a10: rgba(73, 5, 0, 0.88);
+    --crimson-a11: rgba(97, 6, 1, 0.84);
+    --crimson-a12: rgba(46, 7, 4, 0.9);
+    --crimson-contrast: #faf9f7;
+    --crimson-surface: #f8efeccc;
+}
+
+.dark,
+.dark-theme {
+    --crimson-1: #1d1412;
+    --crimson-2: #241815;
+    --crimson-3: #35201b;
+    --crimson-4: #422620;
+    --crimson-5: #4e2c25;
+    --crimson-6: #5e352c;
+    --crimson-7: #754138;
+    --crimson-8: #955347;
+    --crimson-9: #cf6f60;
+    --crimson-10: #dd8171;
+    --crimson-11: #f2a291;
+    --crimson-12: #fbe1da;
+    --crimson-a1: rgba(207, 111, 96, 0.03);
+    --crimson-a2: rgba(207, 111, 96, 0.06);
+    --crimson-a3: rgba(207, 111, 96, 0.12);
+    --crimson-a4: rgba(207, 111, 96, 0.17);
+    --crimson-a5: rgba(207, 111, 96, 0.23);
+    --crimson-a6: rgba(207, 111, 96, 0.3);
+    --crimson-a7: rgba(207, 111, 96, 0.42);
+    --crimson-a8: rgba(207, 111, 96, 0.56);
+    --crimson-a9: rgba(252, 135, 117, 0.82);
+    --crimson-a10: rgba(254, 148, 130, 0.87);
+    --crimson-a11: rgba(255, 171, 153, 0.95);
+    --crimson-a12: rgba(255, 230, 222, 0.98);
+    --crimson-contrast: #201b19;
+    --crimson-surface: #35201b80;
+}
+
+/* shibuya ships no :focus-visible rule of its own (only the Tailwind
+   -moz-focusring reset), leaving keyboard focus to UA defaults. The
+   accent tokens resolve through the re-toned crimson scale above, so
+   the outline speaks oxblood in light and its lift in dark. */
+a:focus-visible,
+button:focus-visible {
+    outline: 2px solid var(--accent-9);
+    outline-offset: 2px;
+}

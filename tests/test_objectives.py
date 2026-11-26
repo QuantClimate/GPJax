@@ -30,6 +30,10 @@ import jax.tree_util as jtu
 import numpy as np
 import pytest
 
+from tests._categorical_helpers import (
+    three_class_data,
+    whitened_family,
+)
 from tests._dual_helpers import (
     DUAL_JITTER,
     matched_variational_gaussian as _matched_variational_gaussian,
@@ -882,3 +886,21 @@ def test_pinned_elbo_is_a_lower_bound_on_the_evidence(family: str):
     """
     q, data = _pinned_uncollapsed_family(family, binary=False)
     assert elbo(q, data) <= conjugate_mll(q.model, data)
+
+
+# --- elbo with a likelihood whose integrator draws samples ---
+
+
+def test_elbo_with_three_classes_and_a_fixed_key_is_finite_and_deterministic():
+    family, *_ = whitened_family()
+    data = three_class_data()
+    first = gpx.objectives.elbo(family, data, key=jr.key(7))
+    second = gpx.objectives.elbo(family, data, key=jr.key(7))
+    assert jnp.isfinite(first)
+    assert first == second
+
+
+def test_elbo_with_three_classes_and_no_key_raises():
+    family, *_ = whitened_family()
+    with pytest.raises(ValueError, match="key="):
+        gpx.objectives.elbo(family, three_class_data())

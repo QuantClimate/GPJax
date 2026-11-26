@@ -1,0 +1,5 @@
+# Cloudflare static-asset headers, copied to the site root by html_extra_path.
+# Without this, tools on other sites cannot read the docs' files (objects.inv,
+# images, JSON) from a browser.
+/*
+  Access-Control-Allow-Origin: *

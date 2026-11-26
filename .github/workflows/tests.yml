@@ -20,7 +20,7 @@ jobs:
     strategy:
       matrix:
         os: ["ubuntu-latest", "macos-latest"]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
       fail-fast: true
     runs-on: ${{ matrix.os }}
     steps:
@@ -49,14 +49,22 @@ jobs:
 
       # Run the unit tests and build the coverage report
       - name: Run Tests
-        run: uv run pytest . -v --cov=./gpjax --cov-report=xml:./coverage.xml
+        # The same command as `uv run poe coverage`, so CI also checks that the
+        # poe task works.
+        run: uv run poe coverage
+
+      # `poe test` once crashed before it collected a test. Collecting checks
+      # that it starts.
+      - name: Check that poe test starts
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: uv run poe test --collect-only -q
 
 
       - name: Upload code coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
+          files: ./coverage.xml
           name: gpjax
           flags: unittests
           env_vars: OS,PYTHON

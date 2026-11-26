@@ -64,7 +64,7 @@ uv sync
 We advise you create virtual environment before installing:
 
 ```bash
-conda create -n gpjax_experimental python=3.11.0
+conda create -n gpjax_experimental python=3.12
 conda activate gpjax_experimental
 ```
 

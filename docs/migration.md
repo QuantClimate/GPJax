@@ -8,6 +8,34 @@ Releases not listed here made no breaking changes; see the
 [changelog](gh:blob/main/CHANGELOG.md) for
 the full history.
 
+## 1.2.x → 1.3.0
+
+GPJax `1.3` adds features and one fix that can change the results of existing
+code. The OILMM predictive is now in blocked order. `ICMKernel`, `LCMKernel`
+and the `Categorical` likelihood already use this order.
+
+- `OILMMPosterior(test_inputs)` and `OILMMPosterior.predict` return `N · P`
+  values with index p·N + n. The `N` test inputs of output 0 come first, then
+  those of output 1, and so on.
+- Before, the index was n·P + p: the `P` outputs of test input 0 came first.
+- The shape `(N · P,)` does not change. Thus old code gives wrong numbers and
+  no error.
+- The dense covariance and the marginal variances use the same order as the
+  mean.
+- To get an `(N, P)` array, replace `pred.mean.reshape(N, P)` with
+  `pred.mean.reshape(P, N).T`. Do the same for the variances.
+
+## 1.1.x → 1.2.0
+
+GPJax `1.2` adds features and changes what it installs. The GPJax API does not
+change.
+
+- GPJax needs Python 3.12 or later. GPJax does not support Python 3.11.
+- GPJax no longer depends on beartype, so installing GPJax no longer installs
+  it. If your code imports `beartype`, for example to check types at runtime
+  with `jaxtyping.install_import_hook("gpjax", "beartype.beartype")`, add
+  `beartype` to your own dependencies.
+
 ## 1.0.x → 1.1.0
 
 GPJax `1.1` adds features and fixes. One change can affect existing code: the
@@ -201,8 +229,9 @@ latent_pred = latent(X[:5])                  # was: predict(x, train_data=...)
 ```
 
 For this multi-output process `covariance="dense"` returns the joint
-`(NP, NP)` covariance across test inputs *and* outputs, flattened
-output-major, where single-output processes return `(N, N)`.
+`(NP, NP)` covariance across test inputs *and* outputs, where single-output
+processes return `(N, N)`. In `1.0` to `1.2`, the index of the values is
+n·P + p. From `1.3.0`, the values are in blocked order, with index p·N + n.
 
 `HeteroscedasticVariationalFamily` is the exception: it approximates two
 latent processes, so it has no single conditioned process and its

@@ -78,6 +78,14 @@ you through every detail!
   $ uv sync
   ```
 
+  Then install the pre-commit hooks. [prek](https://github.com/j178/prek) runs
+  them before each commit. They run `ruff check`, `ruff format` and `ty`, the
+  same checks as CI:
+
+  ```bash
+  $ uv run prek install
+  ```
+
   At this point we recommend you check your installation passes the supplied unit tests:
 
   ```bash
@@ -108,6 +116,20 @@ you through every detail!
 6.  Go to the GitHub web page of your fork of the GPJax repo. Click the 'Pull
   request' button to send your changes to the project's maintainers for
   review.
+
+### Changing the public API
+
+Other packages use GPJax's public API. For example, skgp calls `gpx.fit`,
+`gpx.gps.Prior` and `gpx.Dataset`. Obey this rule when you rename or remove a
+public function, class, argument or module:
+
+1. Add the new name. Keep the old name. Make it emit a `DeprecationWarning`
+   with `warnings.warn`, and give the new name in the message.
+2. Remove the old name only in a major release (for example, 2.0.0), and only
+   after skgp stops using it.
+
+skgp's tests fail on a GPJax `DeprecationWarning`. Thus skgp changes to the new
+name before GPJax removes the old name.
 
 ### Pull request checklist
 

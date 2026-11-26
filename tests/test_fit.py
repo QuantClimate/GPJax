@@ -47,6 +47,7 @@ from gpjax.objectives import (
 )
 from gpjax.parameters import (
     PositiveReal,
+    Real,
     val,
 )
 from gpjax.variational_families import (
@@ -64,6 +65,11 @@ import pytest
 import scipy
 from scipy.optimize import OptimizeResult
 
+from tests._categorical_helpers import (
+    three_class_data,
+    whitened_family,
+    zero_mean_rbf_prior,
+)
 from tests._reference.conjugate_svgp import conjugate_optimum
 
 
@@ -184,6 +190,124 @@ def test_fit_scipy_uses_lbfgsb(monkeypatch):
 
     # The docstring promises L-BFGS-B, so the method must not be left to SciPy:
     assert seen["method"] == "L-BFGS-B"
+
+
+class _Scalar(eqx.Module):
+    weight: Real
+
+    def __init__(self, weight: float):
+        self.weight = Real(jnp.array(weight))
+
+
+def _nan_above_two(model, data):
+    # The minimum of (w - 3)^2 is at w = 3, but the objective is NaN for w >= 2.
+    # From w = 0, L-BFGS-B steps to w = 1, then its line search reaches the NaN
+    # region and it stops without converging.
+    weight = val(model.weight)
+    return jnp.where(weight < 2.0, (weight - 3.0) ** 2, jnp.nan)
+
+
+def test_fit_scipy_returns_the_last_finite_iterate():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with (
+        pytest.warns(
+            RuntimeWarning, match="returns the last iterate whose objective is finite"
+        ),
+        pytest.warns(scipy.optimize.OptimizeWarning, match="did not converge"),
+    ):
+        trained_model, history = fit_scipy(
+            model=_Scalar(0.0),
+            objective=_nan_above_two,
+            train_data=data,
+            verbose=False,
+        )
+    assert jnp.isfinite(_nan_above_two(trained_model, data))
+    assert float(val(trained_model.weight)) == pytest.approx(1.0)
+    assert jnp.all(jnp.isfinite(history))
+    assert history[-1] == _nan_above_two(trained_model, data)
+    assert history[-1] < history[0]
+
+
+def test_fit_returns_the_last_finite_iterate():
+    # With SGD at step size 0.1, w_k = 3 - 3 * 0.8^k. Thus w_4 = 1.7712 is the
+    # last iterate below 2, and the objective is NaN from w_5 on.
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with pytest.warns(
+        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    ):
+        trained_model, history = fit(
+            model=_Scalar(0.0),
+            objective=_nan_above_two,
+            train_data=data,
+            optim=ox.sgd(0.1),
+            num_iters=10,
+            verbose=False,
+        )
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (10,)
+    assert jnp.all(jnp.isfinite(history[:5]))
+    assert not jnp.any(jnp.isfinite(history[5:]))
+    assert history[4] == _nan_above_two(trained_model, data)
+
+
+def test_fit_returns_the_last_finite_iterate_inside_jit():
+    # The same run as above, inside `eqx.filter_jit`: the same iterate comes
+    # back, and there is no warning.
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+
+    @eqx.filter_jit
+    def train(model):
+        return fit(
+            model=model,
+            objective=_nan_above_two,
+            train_data=data,
+            optim=ox.sgd(0.1),
+            num_iters=10,
+            verbose=False,
+            safe=False,
+        )
+
+    trained_model, history = train(_Scalar(0.0))
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (10,)
+
+
+def test_fit_keeps_the_history_when_the_objective_stays_finite():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    trained_model, history = fit(
+        model=_Scalar(0.0),
+        objective=_nan_above_two,
+        train_data=data,
+        optim=ox.sgd(0.1),
+        num_iters=4,
+        verbose=False,
+    )
+    assert float(val(trained_model.weight)) == pytest.approx(3.0 - 3.0 * 0.8**4)
+    assert history.shape == (4,)
+
+
+def _nan_gradient_at_zero(model, data):
+    # The value is (w - 3)^2 everywhere, but the gradient is NaN at w <= 0. The
+    # line search of L-BFGS rejects a step to a non-finite value, so the NaN
+    # comes from the gradient at the start: the first update is NaN.
+    weight = val(model.weight)
+    return (weight - 3.0) ** 2 + 0.0 * jnp.sqrt(jnp.maximum(-weight, 0.0))
+
+
+def test_fit_lbfgs_returns_the_last_finite_iterate():
+    data = Dataset(X=jnp.zeros((1, 1)), y=jnp.zeros((1, 1)))
+    with pytest.warns(
+        RuntimeWarning, match="returns the last iterate whose objective is finite"
+    ):
+        trained_model, final_loss = fit_lbfgs(
+            model=_Scalar(0.0),
+            objective=_nan_gradient_at_zero,
+            train_data=data,
+            max_iters=10,
+        )
+    assert float(val(trained_model.weight)) == 0.0
+    assert final_loss == _nan_gradient_at_zero(trained_model, data)
+    assert final_loss == 9.0
 
 
 def test_fit_lbfgs_simple():
@@ -1303,3 +1427,52 @@ def test_fit_on_dual_family_still_works() -> None:
     assert history.shape == (20,)
     assert bool(jnp.all(jnp.isfinite(history)))
     assert history[-1] < history[0]
+
+
+# --- fitting a likelihood with more than one latent function (Categorical) ---
+
+
+def test_fit_separates_three_classes():
+    # Three classes in three bands of the input: class c for x in band c.
+    inputs = jnp.linspace(-3.0, 3.0, 60).reshape(-1, 1)
+    labels = jnp.digitize(inputs[:, 0], jnp.array([-1.0, 1.0]))
+    data = gpx.Dataset(X=inputs, y=labels.astype(jnp.float64).reshape(-1, 1))
+
+    model = zero_mean_rbf_prior() * gpx.likelihoods.Categorical(num_classes=3)
+    family = gpx.variational_families.WhitenedVariationalGaussian(
+        model=model, inducing_inputs=jnp.linspace(-3.0, 3.0, 10).reshape(-1, 1)
+    )
+
+    fit_key, elbo_key = jr.split(jr.key(0))
+
+    def objective(q, batch):
+        return -gpx.objectives.elbo(q, batch, key=elbo_key)
+
+    fitted, history = gpx.fit(
+        model=family,
+        objective=objective,
+        train_data=data,
+        optim=ox.adam(0.05),
+        key=fit_key,
+        num_iters=300,
+        verbose=False,
+    )
+    assert history[-1] < history[0]
+
+    probabilities = model.likelihood.predict(fitted.condition(data)(inputs)).probs
+    accuracy = jnp.mean(jnp.argmax(probabilities, axis=1) == labels)
+    assert accuracy > 0.9
+
+
+def test_fit_natgrads_rejects_more_than_one_latent_function():
+    family, *_ = whitened_family()
+    elbo_key = jr.key(0)
+    with pytest.raises(ValueError, match="one latent function"):
+        gpx.fit_natgrads(
+            model=family,
+            objective=lambda q, batch: -gpx.objectives.elbo(q, batch, key=elbo_key),
+            train_data=three_class_data(),
+            optim=ox.adam(0.01),
+            num_iters=2,
+            verbose=False,
+        )

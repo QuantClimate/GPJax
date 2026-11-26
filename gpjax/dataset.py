@@ -15,7 +15,6 @@
 from dataclasses import dataclass
 import warnings
 
-from beartype.typing import Optional
 import jax
 import jax.numpy as jnp
 from jaxtyping import Num
@@ -36,9 +35,9 @@ class Dataset:
             the dataset is self-describing (``n_total == n``).
     """
 
-    X: Optional[Num[Array, "N D"]] = None
-    y: Optional[Num[Array, "N Q"]] = None
-    n_total: Optional[int] = None
+    X: Num[Array, "N D"] | None = None
+    y: Num[Array, "N Q"] | None = None
+    n_total: int | None = None
 
     def __post_init__(self) -> None:
         r"""Checks that the shapes of $X$ and $y$ are compatible,
@@ -125,9 +124,7 @@ class Dataset:
         return cls(*children, n_total=aux_data)
 
 
-def _check_shape(
-    X: Optional[Num[Array, "..."]], y: Optional[Num[Array, "..."]]
-) -> None:
+def _check_shape(X: Num[Array, "..."] | None, y: Num[Array, "..."] | None) -> None:
     r"""Checks that the shapes of $X$ and $y$ are compatible."""
     if X is not None and y is not None and X.shape[0] != y.shape[0]:
         raise ValueError(
@@ -146,9 +143,7 @@ def _check_shape(
         )
 
 
-def _check_precision(
-    X: Optional[Num[Array, "..."]], y: Optional[Num[Array, "..."]]
-) -> None:
+def _check_precision(X: Num[Array, "..."] | None, y: Num[Array, "..."] | None) -> None:
     r"""Checks the precision of $X$ and $y$."""
     if X is not None and X.dtype != jnp.float64:
         warnings.warn(

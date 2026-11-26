@@ -14,7 +14,8 @@
 # ==============================================================================
 
 
-import beartype.typing as tp
+import typing as tp
+
 import equinox as eqx
 import jax.numpy as jnp
 from jaxtyping import Float
@@ -36,8 +37,8 @@ from gpjax.typing import (
     ScalarFloat,
 )
 
-Lengthscale = tp.Union[Float[Array, "D"], ScalarArray]
-LengthscaleCompatible = tp.Union[ScalarFloat, list[float], Lengthscale]
+Lengthscale = Float[Array, " D"] | ScalarArray
+LengthscaleCompatible = ScalarFloat | list[float] | Lengthscale
 
 
 class StationaryKernel(AbstractKernel):
@@ -58,10 +59,10 @@ class StationaryKernel(AbstractKernel):
 
     def __init__(
         self,
-        active_dims: tp.Union[list[int], slice, None] = None,
-        lengthscale: tp.Union[LengthscaleCompatible, AbstractUnwrappable] = 1.0,
-        variance: tp.Union[ScalarFloat, AbstractUnwrappable] = 1.0,
-        n_dims: tp.Union[int, None] = None,
+        active_dims: list[int] | slice | None = None,
+        lengthscale: LengthscaleCompatible | AbstractUnwrappable = 1.0,
+        variance: ScalarFloat | AbstractUnwrappable = 1.0,
+        n_dims: int | None = None,
         compute_engine: AbstractKernelComputation = DenseKernelComputation(),
     ):
         """Initializes the kernel.
@@ -145,8 +146,8 @@ class StationaryKernel(AbstractKernel):
 
 
 def _validate_lengthscale(
-    lengthscale: tp.Union[LengthscaleCompatible, AbstractUnwrappable],
-    n_dims: tp.Union[int, None],
+    lengthscale: LengthscaleCompatible | AbstractUnwrappable,
+    n_dims: int | None,
 ):
     # Check that the lengthscale is a valid value.
     _check_lengthscale(lengthscale)
@@ -156,8 +157,8 @@ def _validate_lengthscale(
 
 
 def _check_lengthscale_dims_compat(
-    lengthscale: tp.Union[LengthscaleCompatible, AbstractUnwrappable],
-    n_dims: tp.Union[int, None],
+    lengthscale: LengthscaleCompatible | AbstractUnwrappable,
+    n_dims: int | None,
 ):
     r"""Check that the lengthscale is compatible with n_dims.
 

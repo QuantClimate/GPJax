@@ -1,0 +1,87 @@
+[project]
+name = "skgp"
+version = "0.1.0"
+description = "Easy fitting of Gaussian process models."
+readme = "README.md"
+authors = [
+    { name = "Thomas Pinder", email = "tompinder@live.co.uk" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "equinox>=0.13.8",
+    # The upper bound stops a future GPJax 2.0, which may remove API that skgp
+    # uses, from installing under a skgp release.
+    "gpjax>=1.1.0,<2",
+    "jax>=0.10.2",
+    "loguru>=0.8.0",
+    "narwhals>=2.28.0",
+    "numpy>=2.4.6",
+    "optax>=0.2.9",
+    "paramax>=0.0.5",
+    "polars>=2.1.0",
+    "pydantic>=2.14.3",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.17.1",
+    "scoringrules>=0.12.0",
+]
+
+[project.urls]
+Documentation = "https://skgp.quantclimate.com/"
+Issues = "https://github.com/QuantClimate/GPJax/issues"
+Source = "https://github.com/QuantClimate/GPJax/tree/main/skgp"
+
+# skgp is a member of the uv workspace whose root is the GPJax repository. uv
+# reads `[tool.uv]` settings, such as `exclude-newer`, only from the root
+# pyproject.toml, and ruff takes the root's configuration too.
+[tool.uv.sources]
+# In development, skgp uses the GPJax code in the same commit, not a PyPI release.
+gpjax = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pandas>=3.1.1",
+    "pandera[pandas,polars]>=0.36.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
+]
+docs = [
+    "myst-parser>=5.0",
+    "shibuya>=2026.7",
+    "sphinx>=9.0",
+    "sphinx-codeautolink>=0.19",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-design>=0.7",
+    "sphinx-sitemap>=2.9",
+    "sphinxext-opengraph>=0.13",
+]
+
+[tool.ty.src]
+# docs/conf.py imports Sphinx, which is only in the `docs` group, so ty would
+# report it unresolved in the default environment. Impulso excludes it too.
+exclude = ["docs/**"]
+
+[tool.pytest.ini_options]
+# Plain `pytest` skips the tests marked slow, so a local check stays quick.
+# CI runs everything with `pytest -m ""`.
+addopts = "--strict-markers -m 'not slow'"
+markers = ["slow: takes over a second; skipped unless run with -m \"\""]
+# The tests import `tests/helpers.py` as `helpers`, whichever import mode pytest uses.
+pythonpath = ["tests"]
+# A GPJax deprecation fails skgp's tests, so skgp moves to the new API before
+# GPJax removes the old one (the rule in GPJax's AGENTS.md). GPJax warns with
+# `stacklevel=2`, so Python gives the warning to the module that calls GPJax:
+# `skgp.*` catches a deprecated call from skgp's code, and `gpjax.*` catches
+# a deprecated call inside GPJax.
+filterwarnings = [
+    "error::DeprecationWarning:skgp.*",
+    "error::DeprecationWarning:gpjax.*",
+    # A fit that does not settle fails the test, unless the test expects the
+    # warning with `pytest.warns` or ignores it with a stated reason.
+    "error::skgp.ConvergenceWarning",
+]
+

@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from warnings import filterwarnings
-
-from beartype.roar import BeartypeDecorHintPep585DeprecationWarning
-
-filterwarnings("ignore", category=BeartypeDecorHintPep585DeprecationWarning)
+from importlib.metadata import version as _distribution_version
 
 from gpjax import (
     gps,
@@ -57,7 +53,8 @@ __license__ = "MIT"
 __description__ = "Gaussian processes in JAX"
 __url__ = "https://github.com/QuantClimate/GPJax"
 __contributors__ = "https://github.com/QuantClimate/GPJax/graphs/contributors"
-__version__ = "1.1.0"
+# The version is set once, in pyproject.toml.
+__version__ = _distribution_version("gpjax")
 
 __all__ = [
     "ConjugateModel",

@@ -255,7 +255,7 @@ def test_inputs_for_reports_a_missing_input(field):
 
 
 @pytest.mark.parametrize(
-    "inputs, message",
+    ("inputs", "message"),
     [
         (["lat", "lat"], "duplicate"),
         (["lat", "t2m"], "target"),

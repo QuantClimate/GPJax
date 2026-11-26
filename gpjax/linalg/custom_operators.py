@@ -167,3 +167,8 @@ def _has_unit_diagonal_blockdiag(op):
 @lx.has_unit_diagonal.register(Kronecker)
 def _has_unit_diagonal_kronecker(op):
     return False
+
+
+@lx.diagonal.register(BlockDiag)
+def _diagonal_blockdiag(op):
+    return jnp.concatenate([lx.diagonal(block) for block in op.blocks])

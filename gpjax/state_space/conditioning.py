@@ -21,9 +21,9 @@ See plans/2026-04-21-state-space-gps-design.md for the full design.
 
 from __future__ import annotations
 
+import typing as tp
 from typing import Literal
 
-import beartype.typing as tp
 from jaxtyping import (
     Bool,
     Num,
@@ -113,14 +113,14 @@ class StateSpacePosterior(Posterior):
 
     model: tp.Any
     train_data: Dataset
-    observation_mask: tp.Optional[Bool[Array, " N"]]
+    observation_mask: Bool[Array, " N"] | None
 
     def __init__(
         self,
         model: tp.Any,
         train_data: Dataset,
         *,
-        observation_mask: tp.Optional[Bool[Array, " N"]] = None,
+        observation_mask: Bool[Array, " N"] | None = None,
     ):
         r"""Bundle a state-space model with the data it is conditioned on.
 
@@ -183,7 +183,7 @@ class StateSpacePosterior(Posterior):
     def predict(
         self,
         test_inputs: Num[Array, "M 1"],
-        train_data: tp.Optional[Dataset] = None,
+        train_data: Dataset | None = None,
         *,
         covariance: Literal["dense", "diagonal"] = "diagonal",
     ) -> GaussianDistribution:

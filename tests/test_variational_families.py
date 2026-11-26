@@ -43,12 +43,17 @@ from jaxtyping import (
     Array,
     Float,
 )
+import lineax as lx
 import networkx as nx
 import numpy as np
 import numpyro.distributions as npd
 from numpyro.distributions import Distribution as NumpyroDistribution
 import pytest
 
+from tests._categorical_helpers import (
+    whitened_family,
+    zero_mean_rbf_prior,
+)
 from tests._dual_helpers import (
     DUAL_JITTER,
     build_dual,
@@ -1119,7 +1124,8 @@ def test_collapsed_prior_kl_gradients_match_the_oracle(
         eqx.filter(reference_grads, eqx.is_inexact_array)
     )
 
-    assert leaves and len(leaves) == len(reference_leaves)
+    assert leaves
+    assert len(leaves) == len(reference_leaves)
     for leaf, reference_leaf in zip(leaves, reference_leaves, strict=True):
         np.testing.assert_allclose(
             np.asarray(leaf), np.asarray(reference_leaf), rtol=1e-8, atol=1e-10
@@ -1145,3 +1151,82 @@ def test_collapsed_prior_kl_vanishes_when_the_data_are_uninformative() -> None:
     """
     family, train_data = _build_collapsed_family("rbf", "grid-9-1d", 1e6)
     assert 0.0 <= family.prior_kl(train_data) < 1e-8
+
+
+# --- Families with more than one latent function (Categorical) ---
+
+
+def _three_class_model():
+    return zero_mean_rbf_prior() * gpx.likelihoods.Categorical(num_classes=3)
+
+
+def test_whitened_family_defaults_have_one_mean_column_and_root_per_class():
+    inducing_inputs = jnp.linspace(-1.0, 1.0, 4).reshape(-1, 1)
+    family = gpx.variational_families.WhitenedVariationalGaussian(
+        model=_three_class_model(), inducing_inputs=inducing_inputs
+    )
+    assert val(family.variational_mean).shape == (4, 3)
+    root = val(family.variational_root_covariance)
+    assert root.shape == (3, 4, 4)
+    assert jnp.allclose(root, jnp.stack([jnp.eye(4)] * 3))
+
+
+def test_whitened_prior_kl_with_three_classes_is_the_sum_of_the_class_divergences():
+    family, _, mean, root = whitened_family()
+    standard_normal = gpjax.distributions.GaussianDistribution(
+        loc=jnp.zeros(3), scale=lx.MatrixLinearOperator(jnp.eye(3))
+    )
+    expected = sum(
+        gpjax.distributions.GaussianDistribution(
+            loc=mean[:, class_index],
+            scale=lx.MatrixLinearOperator(root[class_index] @ root[class_index].T),
+        ).kl_divergence(standard_normal)
+        for class_index in range(3)
+    )
+    assert jnp.allclose(family.prior_kl(), expected)
+
+
+@pytest.mark.parametrize(
+    "family_name",
+    [
+        "VariationalGaussian",
+        "DualVariationalGaussian",
+        "CollapsedVariationalGaussian",
+        "GraphVariationalGaussian",
+    ],
+)
+def test_families_without_multi_class_support_raise(family_name):
+    family_class = getattr(gpx.variational_families, family_name)
+    inducing_inputs = jnp.linspace(-1.0, 1.0, 3).reshape(-1, 1)
+    if family_name == "GraphVariationalGaussian":
+        inducing_inputs = jnp.arange(3).reshape(-1, 1)
+    with pytest.raises(ValueError, match="WhitenedVariationalGaussian"):
+        family_class(model=_three_class_model(), inducing_inputs=inducing_inputs)
+
+
+@pytest.mark.parametrize(
+    ("likelihood", "mean_shape", "root_shape", "wrong_argument"),
+    [
+        # One latent function: the mean needs one column.
+        (gpx.likelihoods.Bernoulli(), (3, 2), (3, 3), "variational_mean"),
+        # Three latent functions: the root needs one (M, M) matrix per class.
+        (
+            gpx.likelihoods.Categorical(num_classes=3),
+            (3, 3),
+            (3, 3),
+            "variational_root_covariance",
+        ),
+    ],
+    ids=["mean-columns", "root-per-class"],
+)
+def test_whitened_family_rejects_moments_of_the_wrong_shape(
+    likelihood, mean_shape, root_shape, wrong_argument
+):
+    model = zero_mean_rbf_prior() * likelihood
+    with pytest.raises(ValueError, match=wrong_argument):
+        gpx.variational_families.WhitenedVariationalGaussian(
+            model=model,
+            inducing_inputs=jnp.linspace(-1.0, 1.0, 3).reshape(-1, 1),
+            variational_mean=jnp.zeros(mean_shape),
+            variational_root_covariance=jnp.eye(3) * jnp.ones(root_shape),
+        )

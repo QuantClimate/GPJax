@@ -26,7 +26,7 @@ class TestSinhArcsinhTransform:
         assert jnp.allclose(t(x), x, atol=1e-12)
 
     @pytest.mark.parametrize(
-        "skewness,tailweight",
+        ("skewness", "tailweight"),
         [(0.0, 1.0), (0.5, 1.2), (-0.3, 0.8), (1.0, 2.0)],
     )
     def test_forward_inverse_roundtrip(self, skewness, tailweight):
@@ -39,7 +39,7 @@ class TestSinhArcsinhTransform:
         assert jnp.allclose(t.inv(t(x)), x, atol=1e-10)
 
     @pytest.mark.parametrize(
-        "skewness,tailweight",
+        ("skewness", "tailweight"),
         [(0.0, 1.0), (0.5, 1.2), (-0.3, 0.8)],
     )
     def test_inverse_forward_roundtrip(self, skewness, tailweight):
