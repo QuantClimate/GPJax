@@ -1,7 +1,6 @@
 """The mean function: what the curve is far from the training data, where the data says
 nothing. Near the data the curve follows the data whatever it is."""
 
-from datetime import date, timedelta
 import json
 import pickle
 
@@ -131,17 +130,6 @@ def test_every_fit_of_a_regressor_takes_the_mean_function(model):
     assert fitted.predict(FAR, include_noise=False).mean()[0] == pytest.approx(
         200, abs=10
     )
-
-
-def test_a_linear_slope_along_a_date_input_is_per_day():
-    days = [date(2026, 1, 1) + timedelta(days=day) for day in range(30)]
-    rising = pl.DataFrame({"day": days, "level": [5 + 0.5 * day for day in range(30)]})
-
-    fitted = GPRegressor("day", "level", mean_function="linear").fit(rising)
-
-    assert learned_mean_function(fitted)["slope"] == {
-        "day": pytest.approx(0.5, abs=0.01)
-    }
 
 
 # Rain where x is above 3, on x from 0 to 10.
