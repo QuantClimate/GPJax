@@ -112,6 +112,6 @@ def test_sample_refuses_a_number_of_samples_or_a_seed_that_is_not_a_whole_number
 
 
 def test_a_pickled_class_prediction_gives_the_same_samples(weather_prediction):
-    loaded = pickle.loads(pickle.dumps(weather_prediction))
+    loaded = pickle.loads(pickle.dumps(weather_prediction))  # nosec B301: loads what this test just pickled
 
     np.testing.assert_array_equal(loaded.sample(5), weather_prediction.sample(5))

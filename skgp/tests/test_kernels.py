@@ -274,7 +274,7 @@ def test_a_fitted_model_with_a_gpjax_kernel_predicts_the_same_after_pickling(
 ):
     rows = pl.DataFrame({"week": [10.5, 200.0]})
 
-    loaded = pickle.loads(pickle.dumps(season_fit))
+    loaded = pickle.loads(pickle.dumps(season_fit))  # nosec B301: loads what this test just pickled
 
     np.testing.assert_allclose(
         loaded.predict(rows).mean(), season_fit.predict(rows).mean(), rtol=1e-12

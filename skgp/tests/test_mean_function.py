@@ -199,7 +199,7 @@ def test_any_other_mean_function_is_refused_when_the_model_is_defined():
 def test_a_fitted_model_with_a_linear_mean_function_predicts_the_same_after_pickling(
     linear_fit,
 ):
-    loaded = pickle.loads(pickle.dumps(linear_fit))
+    loaded = pickle.loads(pickle.dumps(linear_fit))  # nosec B301: loads what this test just pickled
 
     np.testing.assert_allclose(
         loaded.predict(FAR).mean(), linear_fit.predict(FAR).mean(), rtol=1e-9

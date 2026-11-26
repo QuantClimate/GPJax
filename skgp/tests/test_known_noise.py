@@ -216,7 +216,7 @@ def test_a_fitted_model_with_known_noise_alone_names_its_column_and_learned_no_n
 def test_a_pickled_model_with_known_noise_predicts_the_same(known_only):
     rows = pl.DataFrame({"x": [2.0, 5.0], "error": [0.5, 0.0]})
 
-    loaded = pickle.loads(pickle.dumps(known_only))
+    loaded = pickle.loads(pickle.dumps(known_only))  # nosec B301: loads what this test just pickled
 
     np.testing.assert_allclose(
         loaded.predict(rows).std(), known_only.predict(rows).std(), rtol=1e-9

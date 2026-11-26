@@ -39,7 +39,7 @@ TARGET_AT_THE_FITTED_SCALE = [-1.5, 0.5, 0.0, -0.5, 1.5]
 def test_a_pickled_model_predicts_and_describes_itself_as_before(unfinished, kind):
     fitted = unfinished[kind].fitted
 
-    loaded = pickle.loads(pickle.dumps(fitted))
+    loaded = pickle.loads(pickle.dumps(fitted))  # nosec B301: loads what this test just pickled
 
     # 32-bit numbers would differ by about one part in ten million, so this catches them.
     before, after = fitted.predict(NEW_ROWS), loaded.predict(NEW_ROWS)
@@ -55,7 +55,7 @@ def test_a_pickled_model_predicts_and_describes_itself_as_before(unfinished, kin
 def test_a_pickled_classifier_predicts_and_describes_itself_as_before(unfinished, kind):
     fitted = unfinished[kind].fitted
 
-    loaded = pickle.loads(pickle.dumps(fitted))
+    loaded = pickle.loads(pickle.dumps(fitted))  # nosec B301: loads what this test just pickled
 
     np.testing.assert_allclose(
         loaded.predict(NEW_ROWS).probabilities(),
@@ -67,7 +67,7 @@ def test_a_pickled_classifier_predicts_and_describes_itself_as_before(unfinished
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_a_pickled_model_keeps_its_learned_numbers_64_bit(unfinished, kind):
-    loaded = pickle.loads(pickle.dumps(unfinished[kind].fitted))
+    loaded = pickle.loads(pickle.dumps(unfinished[kind].fitted))  # nosec B301: loads what this test just pickled
 
     arrays = [
         leaf for leaf in jax.tree.leaves(loaded.gpjax_model) if hasattr(leaf, "dtype")
@@ -127,7 +127,7 @@ def test_a_pickled_model_keeps_its_pandera_schema_and_still_checks_with_it():
     schema = pap.DataFrameSchema({"x": in_range})
     fitted = GPRegressor(features=["x"], target="y", schema=schema).fit(sine_data(n=40))
 
-    loaded = pickle.loads(pickle.dumps(fitted))
+    loaded = pickle.loads(pickle.dumps(fitted))  # nosec B301: loads what this test just pickled
 
     assert loaded.model.schema == schema
     with pytest.raises(SchemaError):
