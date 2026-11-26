@@ -1,5 +1,5 @@
-# Run by prek (https://github.com/j178/prek) on every commit, so a mistake is caught here
-# and not in CI. Set up once with `uv run prek install`; run by hand with
+# prek (https://github.com/j178/prek) runs these hooks before each commit. Thus you find a
+# mistake here, not in CI. Set up once with `uv run prek install`; run by hand with
 # `uv run prek run --all-files`. The tools come from the lockfile, so a hook and CI
 # always use the same versions. The hooks check the same files as CI.
 repos:

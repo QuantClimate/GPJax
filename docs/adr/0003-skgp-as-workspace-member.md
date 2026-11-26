@@ -25,14 +25,14 @@ member. They share one `uv.lock`.
   before, with `pip install gpjax` and `pip install skgp`.
 - GPJax releases keep the tag format `v1.3.0`. skgp releases use
   `skgp-v0.1.0`, so that a skgp tag does not start GPJax's release workflow.
-- skgp's files came in as one commit. skgp's earlier history stays in the
+- skgp's files come in as one commit. skgp's earlier history stays in the
   archived, private `QuantClimate/skgp` repository.
 - Both packages build with `uv_build`. One ruff configuration in the root
   `pyproject.toml` applies to both packages, and one set of prek hooks runs
   before each commit.
-- skgp requires `gpjax>=1.1.0,<2`. A CI job installs skgp from PyPI with the
-  oldest GPJax that skgp permits, because the workspace always tests skgp
-  against the GPJax code in the same commit.
+- skgp requires `gpjax>=1.1.0,<2`. The workspace always tests skgp against
+  the GPJax code in the same commit. Thus a CI job also tests skgp with the
+  oldest GPJax that skgp permits, from PyPI.
 - A rename or removal in GPJax's public API obeys the rule in `AGENTS.md` and
   `docs/contributing.md`: the old name stays, with a `DeprecationWarning`,
   until skgp stops using it, and goes only in a major release. skgp's tests
@@ -47,7 +47,8 @@ member. They share one `uv.lock`.
 - **skgp as an optional module of the `gpjax` package (for example
   `gpjax.sklearn`).** There is one package and one install. But the two share
   one version number, so each break in skgp's API forces a GPJax major
-  release; skgp's dependencies enter GPJax; and the name `skgp` leaves PyPI.
+  release. Also, skgp's dependencies enter GPJax, and the name `skgp` leaves
+  PyPI.
 
 ## Consequences
 

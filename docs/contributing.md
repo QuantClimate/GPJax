@@ -116,8 +116,8 @@ Other packages use GPJax's public API. For example, skgp calls `gpx.fit`,
 `gpx.gps.Prior` and `gpx.Dataset`. Obey this rule when you rename or remove a
 public function, class, argument or module:
 
-1. Add the new name. Keep the old name, and make it raise a
-   `DeprecationWarning` that gives the new name.
+1. Add the new name. Keep the old name. Make it emit a `DeprecationWarning`
+   with `warnings.warn`, and give the new name in the message.
 2. Remove the old name only in a major release (for example, 2.0.0), and only
    after skgp stops using it.
 

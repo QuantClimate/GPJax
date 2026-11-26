@@ -10,14 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **GPJax builds with `uv_build`.** The version is set once, in
-  `pyproject.toml`, and `gpjax.__version__` reads it from the installed
-  package's metadata. The wheel now includes `LICENSE.txt`.
-- **prek runs the pre-commit hooks.** `.pre-commit-config.yaml` runs
-  `ruff check`, `ruff format` and `ty` before each commit. Install the hooks
-  with `uv run prek install`.
-- **Stricter ruff rules.** Ruff now checks pytest style (`PT`). Rules that
-  only GPJax's code relaxes are per-file ignores.
+- **GPJax builds with `uv_build`.** `pyproject.toml` holds the version, and
+  `gpjax.__version__` reads it from the metadata of the installed package.
+  Thus `import gpjax` needs an installed GPJax; a source folder on `sys.path`
+  alone is not sufficient.
 
 ## [1.3.0] — 2026-11-25
 
