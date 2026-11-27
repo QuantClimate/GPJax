@@ -15,6 +15,7 @@
 from importlib.metadata import version as _distribution_version
 
 from gpjax import (
+    experimentation,
     gps,
     integrators,
     kernels,
@@ -67,6 +68,7 @@ __all__ = [
     "Prior",
     "cite",
     "construct_model",
+    "experimentation",
     "fit",
     "fit_lbfgs",
     "fit_natgrads",
