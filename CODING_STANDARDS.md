@@ -8,7 +8,7 @@ Review applies these rules to GPJax and skgp. Anything a tool checks lives in th
 - **Next to its counterpart.** A test sits in the file that matches its module (for example, kernel tests in `tests/test_kernels/`), so a stack trace leads to the right file.
 - **Every precision.** A test of numerical code is parametrised over the dtypes and precisions it supports, to catch silent promotion.
 - **A regression test for each fix.** A bug fix adds the test that fails without it.
-- **Functions.** Tests are functions, not classes. Mocks use `pytest-mock`; property-based tests use `hypothesis`.
+- **Functions.** Tests are functions, not classes. Mocks use `pytest-mock` or pytest's built-in `monkeypatch` fixture; the two have equal standing. Property-based tests use `hypothesis`.
 
 ## Examples
 

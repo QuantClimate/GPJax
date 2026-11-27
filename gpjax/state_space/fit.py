@@ -50,6 +50,10 @@ def fit_scipy(
     Thin wrapper around ``gpx.fit_scipy``. Validates data, sorts if necessary,
     and uses ``state_space_mll`` as the objective.
 
+    Warns:
+        OptimizeWarning: If SciPy reports that L-BFGS-B did not converge, for
+            example because it reached ``max_iters``.
+
     Example:
         >>> import jax.numpy as jnp
         >>> import gpjax as gpx
