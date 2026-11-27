@@ -1,5 +1,9 @@
 """Tests for state_space.fit wrappers."""
 
+import subprocess
+import sys
+import textwrap
+
 import gpjax as gpx
 from gpjax.parameters import val
 from gpjax.state_space.fit import (
@@ -126,6 +130,50 @@ def test_fit_scipy_warns_on_unsorted_input_and_sorts_internally():
     posterior = prior * likelihood
     with pytest.warns(UserWarning, match=r"unsorted|sort"):
         fit_scipy(model=posterior, train_data=train_data, max_iters=10, verbose=False)
+
+
+def test_fit_scipy_points_the_convergence_warning_at_the_caller():
+    """The warning names the caller, not the GPJax wrapper that calls SciPy.
+
+    The test suite wraps every GPJax function with jaxtyping and beartype (see
+    tests/conftest.py), and the warning would then name a jaxtyping file. So the
+    fit runs in a new Python process, without those wrappers, where the caller
+    is the code passed to ``python -c``.
+    """
+    code = textwrap.dedent(
+        """
+        import warnings
+
+        import jax
+
+        jax.config.update("jax_enable_x64", True)
+        import jax.numpy as jnp
+        from scipy.optimize import OptimizeWarning
+
+        import gpjax as gpx
+        from gpjax.state_space import StateSpacePrior, fit_scipy
+
+        X = jnp.linspace(0.0, 5.0, 20).reshape(-1, 1)
+        prior = StateSpacePrior(
+            mean_function=gpx.mean_functions.Zero(),
+            kernel=gpx.kernels.Matern12(lengthscale=1.0, variance=1.0),
+        )
+        posterior = prior * gpx.likelihoods.Gaussian(obs_stddev=0.3)
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            fit_scipy(
+                model=posterior,
+                train_data=gpx.Dataset(X=X, y=jnp.sin(X)),
+                max_iters=1,
+                verbose=False,
+            )
+        print(next(w.filename for w in record if w.category is OptimizeWarning))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip() == "<string>"
 
 
 def test_fit_lbfgs_does_not_expose_verbose():

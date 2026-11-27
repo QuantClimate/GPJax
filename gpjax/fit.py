@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import functools
+import os
 import typing as tp
 import warnings
 
@@ -41,6 +42,9 @@ from gpjax.typing import (
     ScalarFloat,
 )
 from gpjax.variational_families import DualVariationalGaussian
+
+# Warnings skip the stack frames in files under this directory.
+_GPJAX_DIRECTORY = os.path.dirname(os.path.abspath(__file__)) + os.sep
 
 Model = tp.TypeVar("Model", bound=eqx.Module)
 
@@ -232,7 +236,9 @@ def fit_scipy(
             to the model parameters.
         train_data (Dataset): The training data used to evaluate the objective.
         max_iters (int): Maximum number of L-BFGS-B iterations. Defaults to 500.
-        verbose (bool): Whether to print optimisation progress. Defaults to True.
+        verbose (bool): Whether to print one line after L-BFGS-B stops: the
+            number of iterations, the final objective and SciPy's message.
+            Defaults to True.
         safe (bool): Whether to validate inputs before optimisation. Defaults to
             True.
 
@@ -338,8 +344,12 @@ def fit_scipy(
     # A solver that gave up leaves a model that is no better than its starting
     # point, which is easy to mistake for a converged fit.
     if not result.success:
+        # Point the warning at the first caller outside GPJax, also when a
+        # GPJax wrapper such as `gpjax.state_space.fit_scipy` calls this function.
         warnings.warn(
-            f"SciPy did not converge: {result.message}", OptimizeWarning, stacklevel=2
+            f"SciPy did not converge: {result.message}",
+            OptimizeWarning,
+            skip_file_prefixes=(_GPJAX_DIRECTORY,),
         )
 
     # convert back to pytree with JAX arrays

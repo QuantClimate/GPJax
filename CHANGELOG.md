@@ -17,10 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`fit_scipy` runs L-BFGS-B, as its docstring says**
+  ([#837](https://github.com/QuantClimate/GPJax/issues/837)). Before,
+  `fit_scipy` gave SciPy no method, so SciPy used BFGS. BFGS can diverge on a
+  well-scaled regression, and its dense inverse Hessian does not scale to many
+  parameters.
+  - `fit_scipy` gives an `OptimizeWarning` when SciPy reports that L-BFGS-B
+    did not converge, for example because it reached `max_iters`.
+  - With `verbose=True`, `fit_scipy` prints one line after L-BFGS-B stops: the
+    number of iterations, the final objective and SciPy's message. It no
+    longer prints progress during the run, because L-BFGS-B has no `disp`
+    option.
 - **`fit`, `fit_scipy` and `fit_lbfgs` no longer return a model with a NaN
   objective** ([#850](https://github.com/QuantClimate/GPJax/issues/850)). An
   optimiser can make a last step to a point where the objective is not finite.
-  SciPy's BFGS can accept such a step. Also, a NaN gradient makes the
+  SciPy can end its run on such a step. Also, a NaN gradient makes the
   parameters NaN. Before, the three optimisers returned the model at that
   point, without a message. Now they return the last iterate whose objective
   is finite, and give a `RuntimeWarning`. If no iterate has a finite
